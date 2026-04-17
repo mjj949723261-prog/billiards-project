@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>双人台球</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%231a5c39'/%3E%3Ccircle cx='32' cy='32' r='14' fill='white'/%3E%3Ccircle cx='26' cy='26' r='4' fill='%23d8d8d8'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css?v=20260416_semantic_landscape_map1">
+</head>
+<body>
+  <!-- 游戏引导与匹配覆盖层 -->
+  <div id="ui-layer">
+    <div id="auth-panel" class="panel">
+      <div class="auth-shell">
+        <div class="auth-stage">
+          <div class="auth-brand">
+            <span class="auth-brand-ball">8</span>
+            <div class="auth-brand-copy">
+              <p class="auth-kicker">双人台球</p>
+              <h1 class="auth-title">随时开球</h1>
+              <p class="auth-subtitle">登录后进入正式大厅，支持好友对局与实时匹配。</p>
+            </div>
+          </div>
+
+          <div class="auth-card">
+            <div id="auth-tabs">
+              <button id="tab-login" class="active">登录</button>
+              <button id="tab-register">注册</button>
+            </div>
+            
+            <div id="login-form" class="auth-form">
+              <h2>欢迎回来</h2>
+              <input type="text" id="login-username" placeholder="用户名" maxlength="20">
+              <input type="password" id="login-password" placeholder="密码">
+              <button id="btn-login" class="primary">立即登录</button>
+              <button id="btn-guest-play" class="secondary">游客试玩</button>
+            </div>
+
+            <div id="register-form" class="auth-form hidden">
+              <h2>创建账号</h2>
+              <input type="text" id="reg-username" placeholder="用户名" maxlength="20">
+              <input type="text" id="reg-nickname" placeholder="游戏昵称" maxlength="12">
+              <input type="email" id="reg-email" placeholder="电子邮箱">
+              <input type="password" id="reg-password" placeholder="密码">
+              <button id="btn-register" class="primary">注册账号</button>
+            </div>
+            <div id="error-msg" class="hidden"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="lobby-panel" class="panel hidden">
+      <div class="lobby-shell">
+        <div class="lobby-header-row">
+          <div class="lobby-profile-mini">
+            <div class="lobby-avatar">8</div>
+            <div class="lobby-profile-mini-copy">
+              <span id="display-nickname">玩家</span>
+              <p id="display-username">@username</p>
+              <div class="lobby-mini-progress"></div>
+            </div>
+          </div>
+
+          <div class="lobby-header-icons">
+            <button type="button" class="top-icon"><span>👜</span><em>消费商城</em></button>
+            <button type="button" class="top-icon"><span>✦</span><em>幸运星</em></button>
+            <button type="button" class="top-icon"><span>▶</span><em>兔广告</em></button>
+          </div>
+
+          <div class="lobby-currency-row">
+            <span class="currency-pill gold">1500</span>
+            <span class="currency-pill green">+</span>
+            <span class="currency-pill blue">0</span>
+            <span class="currency-pill green">+</span>
+            <button type="button" class="top-action-dot">•••</button>
+            <button type="button" class="top-action-ring">◎</button>
+          </div>
+        </div>
+
+        <div class="lobby-mode-icons">
+          <button type="button" class="mode-orb"><span>▦</span><em>幸运转盘</em></button>
+          <button type="button" class="mode-orb"><span>🐾</span><em>动物城堡</em></button>
+          <button type="button" class="mode-orb"><span>▣</span><em>中路夺宝</em></button>
+          <button type="button" class="mode-orb"><span>♛</span><em>赛季挑战</em></button>
+          <button type="button" class="mode-orb"><span>♚</span><em>争霸模式</em></button>
+          <button type="button" class="mode-orb"><span>🤖</span><em>机器赛</em></button>
+          <button type="button" class="mode-orb"><span>☑</span><em>签到有礼</em></button>
+          <button type="button" class="mode-orb"><span>🖥</span><em>首充豪礼</em></button>
+        </div>
+
+        <div class="lobby-stage">
+          <aside class="lobby-left-rail">
+            <button type="button" class="rail-btn">全民赛事</button>
+            <button type="button" class="rail-btn active">台球联赛</button>
+            <button type="button" class="rail-btn accent">分享大礼</button>
+          </aside>
+
+          <div class="lobby-card-grid">
+            <article class="stage-card blood-card lobby-mode-card">
+              <div class="card-ball-group">
+                <span class="ball eight">8</span>
+                <span class="ball three">3</span>
+              </div>
+              <h2>血流模式</h2>
+              <p class="stage-score">5200</p>
+            </article>
+
+            <article class="stage-card hero-card lobby-hero">
+              <div class="hero-illustration"></div>
+              <div class="hero-card-copy">
+                <h2>快速匹配</h2>
+                <p id="display-rank">79583</p>
+                <div class="hero-card-stats">
+                  <span>积分 <strong id="display-score">21610</strong></span>
+                  <span>胜率 <strong id="display-winrate">63%</strong></span>
+                  <span>总场次 <strong id="display-total-games">128</strong></span>
+                </div>
+              </div>
+              <button id="btn-match" class="primary lobby-primary-action">开始匹配</button>
+            </article>
+
+            <div class="stage-side-stack">
+              <article class="side-mode-card endless lobby-mode-card">
+                <div>
+                  <h3>无尽模式</h3>
+                  <p>21610</p>
+                </div>
+                <span class="card-badge">4</span>
+              </article>
+
+              <article class="side-mode-card challenge lobby-mode-card">
+                <div>
+                  <h3>闯关模式</h3>
+                  <p>38954</p>
+                </div>
+                <span class="card-badge trophy">🏆</span>
+              </article>
+
+              <article class="side-mode-card friend lobby-mode-card lobby-room-card">
+                <div class="friend-card-copy">
+                  <div>
+                    <h3>好友模式</h3>
+                    <p>38142</p>
+                  </div>
+                  <div class="friend-bubble-group">
+                    <span class="friend-bubble orange">9</span>
+                    <span class="friend-bubble blue">2</span>
+                  </div>
+                </div>
+                <div class="friend-room-entry">
+                  <input type="text" id="room-id-input" placeholder="输入房间号" maxlength="8">
+                  <div class="friend-room-actions">
+                    <button id="btn-room-join" class="primary">加入</button>
+                    <button id="btn-room-focus" class="secondary">粘贴</button>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <aside class="lobby-right-rail">
+            <button type="button" class="vertical-pill">赛季奖池</button>
+            <button id="btn-logout" class="secondary rail-logout">退出登录</button>
+          </aside>
+        </div>
+
+        <button type="button" class="floating-coin">赚钱返场</button>
+
+        <div class="lobby-bottom-nav">
+          <button type="button" class="bottom-nav-item">
+            <span class="bottom-icon">⌃</span>
+            <em>更多</em>
+          </button>
+          <button type="button" class="bottom-nav-item active">
+            <span class="bottom-icon">🔥</span>
+            <em>对局大厅</em>
+          </button>
+          <button type="button" class="bottom-nav-item">
+            <span class="bottom-icon">📖</span>
+            <em>装扮</em>
+          </button>
+          <button type="button" class="bottom-nav-item">
+            <span class="bottom-icon">👜</span>
+            <em>背包</em>
+          </button>
+          <button type="button" class="bottom-nav-item accent">
+            <span class="bottom-icon">🛒</span>
+            <em>商城</em>
+          </button>
+        </div>
+      </div>
+      <div id="lobby-error-msg" class="hidden"></div>
+    </div>
+
+    <div id="matchmaking-panel" class="panel hidden" data-state="matching">
+      <div class="matchmaking-backdrop"></div>
+      <div class="matchmaking-shell">
+        <div class="matchmaking-dialog">
+          <div class="matchmaking-dialog-top">
+            <button id="btn-match-back" type="button" class="match-dialog-chip subtle">返回大厅</button>
+            <span id="matchmaking-badge" class="match-dialog-chip active">匹配中</span>
+          </div>
+
+          <div class="matchmaking-stage">
+            <div class="matchmaking-status-pane">
+              <div class="matchmaking-spinner-wrap">
+                <div class="spinner"></div>
+              </div>
+              <div class="matchmaking-dialog-body">
+                <h2 id="matchmaking-title">正在匹配对手...</h2>
+                <p id="match-status">正在连接游戏服务器...</p>
+              </div>
+            </div>
+
+            <div class="matchmaking-side-pane">
+              <div id="current-room-display" class="matchmaking-room-card hidden">
+                <div class="matchmaking-room-copy">
+                  <span class="matchmaking-room-label">当前房间号</span>
+                  <strong id="room-id-val">----</strong>
+                </div>
+                <button id="btn-copy-room" type="button" class="match-dialog-chip">复制房间号</button>
+              </div>
+
+              <div class="matchmaking-actions">
+                <button id="btn-cancel" class="matchmaking-primary-action">取消</button>
+                <p id="matchmaking-footnote" class="matchmaking-footnote">匹配成功后将自动进入对局。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div id="app-wrapper">
+    <!-- 顶部计分板 -->
+    <div id="header-ui">
+      <div class="room-tools room-tools-left">
+        <button id="btn-leave-room" type="button" class="room-tool-chip">返回大厅</button>
+      </div>
+
+      <div class="room-tools room-tools-right">
+        <div class="top-aim-strip" aria-hidden="true">
+          <div class="control-track control-track-aim">
+            <span class="control-knob" id="aim-strip-knob"></span>
+          </div>
+        </div>
+        <span class="network-indicator" id="network-indicator" data-state="online">网络正常</span>
+        <button id="btn-audio-toggle" type="button" class="room-tool-chip" aria-pressed="true">音乐开关</button>
+      </div>
+    </div>
+
+    <!-- 游戏主容器 -->
+    <div id="game-container">
+      <aside class="gameplay-side-panel gameplay-side-panel-left">
+        <div id="player1-score" class="score-box side-score-box active">
+          <div class="power-bar"></div>
+          <div class="player-side-head">
+            <span class="player-avatar" id="p1-avatar">1</span>
+          </div>
+          <div class="player-side-info-row">
+            <div class="player-side-track">
+              <span class="player-ball-label">目标球</span>
+              <div class="player-ball-shell">
+                <div class="ball-list side-ball-list" id="p1-balls"></div>
+              </div>
+            </div>
+            <div class="player-side-meta">
+              <span class="player-name">玩家一</span>
+              <span class="player-side-timer hidden" id="p1-side-timer">45</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <aside class="gameplay-side-panel gameplay-side-panel-right">
+        <div id="player2-score" class="score-box side-score-box">
+          <div class="power-bar"></div>
+          <div class="player-side-head player-side-head-reverse">
+            <span class="player-avatar" id="p2-avatar">2</span>
+          </div>
+          <div class="player-side-info-row">
+            <div class="player-side-meta">
+              <span class="player-name">玩家二</span>
+              <span class="player-side-timer hidden" id="p2-side-timer">45</span>
+            </div>
+            <div class="player-side-track">
+              <span class="player-ball-label">目标球</span>
+              <div class="player-ball-shell">
+                <div class="ball-list side-ball-list" id="p2-balls"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <canvas id="game-canvas"></canvas>
+      <div id="toast-message" class="hidden"></div>
+      <div id="game-over" class="hidden">
+        <h1 id="winner-text">玩家一获胜！</h1>
+        <button id="btn-rematch">再来一局</button>
+        <button onclick="location.reload()" style="background:#444; margin-top:10px;">退出房间</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 第三方库：WebGL 渲染与 WebSocket 联机必备 -->
+  <script src="https://pixijs.download/v7.3.2/pixi.min.js"></script>
+  <script src="./vendor/sockjs.min.js"></script>
+  <script src="./vendor/stomp.min.js"></script>
+
+  <script type="module" src="main.js?v=20260416_semantic_landscape_map1"></script>
+</body>
+</html>
