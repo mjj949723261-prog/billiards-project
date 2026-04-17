@@ -16,6 +16,9 @@ export const RAIL_THICKNESS = 34;
 /** @type {number} 每个台球的半径（像素）。 */
 export const BALL_RADIUS = 14;
 
+/** @type {number} 球心允许活动区域相对台面内沿的额外内缩（像素）。 */
+export const PLAYABLE_AREA_INSET = BALL_RADIUS + 24;
+
 /** @type {number} 每个球袋的半径（像素）。 */
 export const POCKET_RADIUS = 22;
 

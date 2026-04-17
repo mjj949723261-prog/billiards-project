@@ -7,6 +7,7 @@
 import {
   BALL_BOUNCE,
   BALL_RADIUS,
+  PLAYABLE_AREA_INSET,
   POCKET_RADIUS,
   POCKET_SCORE_EFFECT_DURATION,
   TABLE_HEIGHT,
@@ -125,8 +126,8 @@ export function onBallPocketed(game, ball, pocketPos) {
 function handleRailCollisions(game, activeBalls) {
   const RAIL_FRICTION = 0.96; // 库边切向摩擦力：使沿库边滑行的球自然减速
   activeBalls.forEach(ball => {
-    const halfWidth = TABLE_WIDTH / 2 - BALL_RADIUS
-    const halfHeight = TABLE_HEIGHT / 2 - BALL_RADIUS
+    const halfWidth = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET
+    const halfHeight = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET
     
     // 检查是否靠近球袋，避免球袋处产生错误的库边碰撞
     const isNearPocket = game.pockets.some(p => Vec2.distance(ball.pos, p) < POCKET_RADIUS * 1.2)

@@ -1,12 +1,12 @@
 import { AssetsBase64 } from './assets.js';
 import {
-  BALL_RADIUS, HEAD_STRING_X, MAX_PULL_DISTANCE, POCKET_RADIUS,
+  BALL_RADIUS, HEAD_STRING_X, MAX_PULL_DISTANCE, PLAYABLE_AREA_INSET, POCKET_RADIUS,
   RAIL_THICKNESS, RELEASE_FLASH_DURATION, TABLE_HEIGHT, TABLE_WIDTH
 } from '../constants.js';
-import { isPortraitLayout } from '../layout/mode.js';
+import { hasDebugOverlay, isPortraitLayout } from '../layout/mode.js';
 import { Vec2 } from '../math.js';
 import { GameClient } from '../network/game-client.js';
-import { shouldRenderAimGuides, getRenderedCuePullDistance, getRenderedCuePowerRatio, resolveTableSurfaceSourceRect } from './table-renderer.js';
+import { shouldRenderAimGuides, getRenderedCuePullDistance, getRenderedCuePowerRatio, getPocketVisualCenters, resolveTableSurfaceSourceRect } from './table-renderer.js';
 
 const ballFragShader = `
 precision mediump float;
@@ -237,24 +237,33 @@ export class PixiRenderer {
         this.drawCueStickGraphics();
     }
 
+    drawPocketDebugRings() {
+        const pocketVisuals = getPocketVisualCenters();
+
+        const pocketRing = new PIXI.Graphics();
+        pocketVisuals.forEach((pocket) => {
+            pocketRing.beginFill(0xef4444, 0.45);
+            pocketRing.drawCircle(pocket.x, pocket.y, POCKET_RADIUS);
+            pocketRing.endFill();
+            pocketRing.lineStyle(2, 0xb91c1c, 0.95);
+            pocketRing.drawCircle(pocket.x, pocket.y, POCKET_RADIUS);
+        });
+        this.staticLayer.addChild(pocketRing);
+    }
+
     drawStaticTable() {
         this.staticLayer.removeChildren();
         this.resetUiOverlayLayers();
         const railThickness = this.visualRailThickness;
         const borderW = TABLE_WIDTH + this.visualRailThickness * 2;
         const borderH = TABLE_HEIGHT + this.visualRailThickness * 2;
-        const rollAreaX = -TABLE_WIDTH / 2 + BALL_RADIUS;
-        const rollAreaY = -TABLE_HEIGHT / 2 + BALL_RADIUS;
-        const rollAreaWidth = TABLE_WIDTH - BALL_RADIUS * 2;
-        const rollAreaHeight = TABLE_HEIGHT - BALL_RADIUS * 2;
+        const rollAreaX = -TABLE_WIDTH / 2 + PLAYABLE_AREA_INSET;
+        const rollAreaY = -TABLE_HEIGHT / 2 + PLAYABLE_AREA_INSET;
+        const rollAreaWidth = TABLE_WIDTH - PLAYABLE_AREA_INSET * 2;
+        const rollAreaHeight = TABLE_HEIGHT - PLAYABLE_AREA_INSET * 2;
+        const showDebugOverlay = hasDebugOverlay(window);
 
         if (this.textures.tableSurface?.baseTexture?.valid) {
-            const sourceRect = resolveTableSurfaceSourceRect(
-                this.textures.tableSurface.width,
-                this.textures.tableSurface.height,
-                borderW,
-                borderH,
-            );
             const tableShadow = new PIXI.Graphics();
             tableShadow.beginFill(0x000000, 0.24);
             tableShadow.drawRoundedRect(-borderW / 2 - 10, -borderH / 2 - 4, borderW + 20, borderH + 18, 28);
@@ -263,27 +272,22 @@ export class PixiRenderer {
             tableShadow.filters = [new PIXI.BlurFilter(10)];
             this.staticLayer.addChild(tableShadow);
 
-            if (this.tableSurfaceTextureFrame) {
-                this.tableSurfaceTextureFrame.destroy(false);
-                this.tableSurfaceTextureFrame = null;
-            }
-            this.tableSurfaceTextureFrame = new PIXI.Texture(
-                this.textures.tableSurface.baseTexture,
-                new PIXI.Rectangle(sourceRect.x, sourceRect.y, sourceRect.width, sourceRect.height),
-            );
-            const tableSurface = new PIXI.Sprite(this.tableSurfaceTextureFrame);
+            const tableSurface = new PIXI.Sprite(this.textures.tableSurface);
             tableSurface.anchor.set(0.5);
             tableSurface.width = borderW;
             tableSurface.height = borderH;
             this.staticLayer.addChild(tableSurface);
 
-            const rollArea = new PIXI.Graphics();
-            rollArea.beginFill(0xff3b30, 0.16);
-            rollArea.drawRect(rollAreaX, rollAreaY, rollAreaWidth, rollAreaHeight);
-            rollArea.endFill();
-            rollArea.lineStyle(2, 0xff3b30, 0.85);
-            rollArea.drawRect(rollAreaX, rollAreaY, rollAreaWidth, rollAreaHeight);
-            this.staticLayer.addChild(rollArea);
+            if (showDebugOverlay) {
+                const rollArea = new PIXI.Graphics();
+                rollArea.beginFill(0x3b82f6, 0.16);
+                rollArea.drawRect(rollAreaX, rollAreaY, rollAreaWidth, rollAreaHeight);
+                rollArea.endFill();
+                rollArea.lineStyle(2, 0x3b82f6, 0.85);
+                rollArea.drawRect(rollAreaX, rollAreaY, rollAreaWidth, rollAreaHeight);
+                this.staticLayer.addChild(rollArea);
+                this.drawPocketDebugRings();
+            }
 
             this.createUiOverlayLayers();
             return;
@@ -328,13 +332,15 @@ export class PixiRenderer {
         cloth.height = TABLE_HEIGHT;
         this.staticLayer.addChild(cloth);
 
-        const rollArea = new PIXI.Graphics();
-        rollArea.beginFill(0xff3b30, 0.16);
-        rollArea.drawRect(rollAreaX, rollAreaY, rollAreaWidth, rollAreaHeight);
-        rollArea.endFill();
-        rollArea.lineStyle(2, 0xff3b30, 0.85);
-        rollArea.drawRect(rollAreaX, rollAreaY, rollAreaWidth, rollAreaHeight);
-        this.staticLayer.addChild(rollArea);
+        if (showDebugOverlay) {
+            const rollArea = new PIXI.Graphics();
+            rollArea.beginFill(0x3b82f6, 0.16);
+            rollArea.drawRect(rollAreaX, rollAreaY, rollAreaWidth, rollAreaHeight);
+            rollArea.endFill();
+            rollArea.lineStyle(2, 0x3b82f6, 0.85);
+            rollArea.drawRect(rollAreaX, rollAreaY, rollAreaWidth, rollAreaHeight);
+            this.staticLayer.addChild(rollArea);
+        }
 
         const cushions = new PIXI.Graphics();
         const cushionThickness = 12;
@@ -407,7 +413,11 @@ export class PixiRenderer {
             pocketLiner.drawCircle(pocket.x, pocket.y, POCKET_RADIUS + 0.5);
             this.staticLayer.addChild(pocketLiner);
         });
-        
+
+        if (showDebugOverlay) {
+            this.drawPocketDebugRings();
+        }
+
         this.createUiOverlayLayers();
     }
 

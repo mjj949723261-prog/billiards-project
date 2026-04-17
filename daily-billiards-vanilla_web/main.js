@@ -386,8 +386,12 @@ window.addEventListener('resize', syncLayoutMode);
  * 更新身份面板的显示状态（登录前 vs 登录后）
  */
 function updateAuthUI() {
+    const roomFromUrl = new URLSearchParams(window.location.search).get('room');
     if (AuthService.isLoggedIn()) {
         renderLobbyProfile(AuthService.getUser());
+        showLobbyView();
+    } else if (roomFromUrl) {
+        renderLobbyProfile({ nickname: '游客玩家', username: 'guest' });
         showLobbyView();
     } else {
         showAuthView();

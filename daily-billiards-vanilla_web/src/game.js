@@ -13,6 +13,7 @@ import {
   BALL_BOUNCE,
   TURN_TIME_LIMIT,
   POCKET_SCORE_EFFECT_DURATION,
+  PLAYABLE_AREA_INSET,
   HEAD_STRING_X,
   SHOT_POWER_SCALE,
   RELEASE_FLASH_DURATION,
@@ -26,6 +27,7 @@ import { applyGroups, evaluateShot, switchTurn } from './core/rules.js'
 import { bindGameInput } from './input/bindings.js'
 import { isPortraitHeldLandscapeSemanticMobile, isPortraitLayout, shouldRemapGameplayInput, shouldRotateGameplayStage } from './layout/mode.js'
 import { PixiRenderer } from './render/pixi-renderer.js'
+import { getPocketVisualCenters } from './render/table-renderer.js'
 import { updateGameUi, updateTimerUi } from './ui/dom-ui.js'
 import { GameClient } from './network/game-client.js'
 import { applyStatusSync, createStatusSyncSnapshot } from './network/state-sync.js'
@@ -110,10 +112,7 @@ export class BilliardsGame {
     this.shotState = null
 
     /** @type {Vec2[]} 球桌六个球袋的中心坐标位置。 */
-    this.pockets = [
-      new Vec2(-TABLE_WIDTH / 2, -TABLE_HEIGHT / 2), new Vec2(0, -TABLE_HEIGHT / 2), new Vec2(TABLE_WIDTH / 2, -TABLE_HEIGHT / 2),
-      new Vec2(-TABLE_WIDTH / 2, TABLE_HEIGHT / 2), new Vec2(0, TABLE_HEIGHT / 2), new Vec2(TABLE_WIDTH / 2, TABLE_HEIGHT / 2),
-    ]
+    this.pockets = getPocketVisualCenters()
     
     /** @type {PixiRenderer} 基于 Pixi.js 的渲染引擎实例。 */
     this.renderer = new PixiRenderer(this)
@@ -155,10 +154,10 @@ export class BilliardsGame {
       ? Math.max(1, Math.min(Math.min(availableWidth, availableHeight) * 0.002, 3))
       : null
     const uiPaddingX = isSemanticMobileGameplay
-      ? railVisualPx * 2 + semanticGameplayInset
+      ? railVisualPx * 1.45 + semanticGameplayInset
       : (isPortrait ? 20 : 220)
     const uiPaddingY = isSemanticMobileGameplay
-      ? railVisualPx * 2 + semanticGameplayInset
+      ? railVisualPx * 1.15 + semanticGameplayInset
       : (isPortrait ? 180 : 20)
 
     const usableWidth = availableWidth - uiPaddingX;
@@ -398,7 +397,7 @@ export class BilliardsGame {
    * @returns {boolean} 如果位置在范围内且不与其他球重叠，则返回 true。
    */
   isCuePlacementLegal(position) {
-    const hw = TABLE_WIDTH / 2 - BALL_RADIUS, hh = TABLE_HEIGHT / 2 - BALL_RADIUS;
+    const hw = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET, hh = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET;
     if (position.x < -hw || position.x > hw || position.y < -hh || position.y > hh) return false;
     if (this.ballInHandZone === 'kitchen' && position.x > HEAD_STRING_X) return false;
     return !this.balls.some(ball => ball !== this.cueBall && !ball.pocketed && Vec2.distance(ball.pos, position) < BALL_RADIUS * 2 + 2);
@@ -408,7 +407,7 @@ export class BilliardsGame {
    * 尝试在当前鼠标位置放置母球。
    */
   tryPlaceCueBall() {
-    const hw = TABLE_WIDTH / 2 - BALL_RADIUS, hh = TABLE_HEIGHT / 2 - BALL_RADIUS;
+    const hw = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET, hh = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET;
     const clampedXMax = this.ballInHandZone === 'kitchen' ? HEAD_STRING_X : hw;
     const next = new Vec2(Math.max(-hw, Math.min(clampedXMax, this.mousePos.x)), Math.max(-hh, Math.min(hh, this.mousePos.y)));
     this.cueBall.vel = new Vec2(0, 0); this.cueBall.pocketed = false;

@@ -40,15 +40,11 @@ function getPlayerAvatarText(game, playerNumber) {
  */
 export function updateGameUi(game) {
   const shouldUseSideBySideHud = true
-  const header = document.getElementById('header-ui')
   const p1 = document.getElementById('player1-score')
   const p2 = document.getElementById('player2-score')
 
   // --- 1. 布局适配 ---
   const isP1Me = (GameClient.playerIndex === 1);
-  header.style.flexDirection = ''
-  header.style.height = ''
-  header.style.padding = ''
   p1.style.order = ''
   p2.style.order = ''
 
@@ -77,7 +73,6 @@ export function updateGameUi(game) {
   const p1Bar = p1.querySelector('.power-bar')
   const p2Bar = p2.querySelector('.power-bar')
   const powerStripFill = document.getElementById('power-strip-fill')
-  const aimStripKnob = document.getElementById('aim-strip-knob')
   
   if (p1Bar) {
     if (!shouldUseSideBySideHud) {
@@ -106,13 +101,6 @@ export function updateGameUi(game) {
     powerStripFill.style.opacity = isMyTurn ? '1' : '0.35'
   }
 
-  if (aimStripKnob) {
-    const normalizedAngle = ((game.aimAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)
-    const aimPercent = normalizedAngle / (Math.PI * 2)
-    aimStripKnob.style.left = `${Math.max(6, Math.min(94, aimPercent * 100))}%`
-    aimStripKnob.style.opacity = game.currentPlayer === GameClient.playerIndex ? '1' : '0.55'
-  }
-
   // --- 4. 动态交互特效 ---
   // 计算动态 HSL 用于外发光，与力度条末端颜色同步
   const hue = 180 * (1 - powerPercent / 100)
@@ -124,9 +112,6 @@ export function updateGameUi(game) {
     activePlayerCard.style.boxShadow = ''
   }
   inactivePlayerCard.style.boxShadow = ''
-
-  header.classList.toggle('player-1-turn', game.currentPlayer === 1)
-  header.classList.toggle('player-2-turn', game.currentPlayer === 2)
 
   // --- 5. 渲染列表与计时器 ---
   updateTimerUi(game)

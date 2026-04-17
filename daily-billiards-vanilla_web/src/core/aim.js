@@ -3,7 +3,7 @@
  * @description 提供计算瞄准引导、球体碰撞射线投射以及库边反弹预测的工具函数。
  */
 
-import { BALL_RADIUS, TABLE_WIDTH, TABLE_HEIGHT } from '../constants.js'
+import { BALL_RADIUS, PLAYABLE_AREA_INSET, TABLE_WIDTH, TABLE_HEIGHT } from '../constants.js'
 import { Vec2 } from '../math.js'
 
 /**
@@ -75,8 +75,8 @@ export function getAimGuide(cueBall, balls, direction) {
  * @returns {number} 到库边的距离。
  */
 export function getWallAimDistance(start, direction) {
-  const halfWidth = TABLE_WIDTH / 2 - BALL_RADIUS
-  const halfHeight = TABLE_HEIGHT / 2 - BALL_RADIUS
+  const halfWidth = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET
+  const halfHeight = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET
   const distances = []
 
   // 计算到四面库边的投影距离
@@ -99,8 +99,8 @@ export function getWallAimDistance(start, direction) {
  */
 export function getProjectedTravel(start, direction, limit = 220) {
   const unitDirection = direction.clone().normalize()
-  const halfWidth = TABLE_WIDTH / 2 - BALL_RADIUS
-  const halfHeight = TABLE_HEIGHT / 2 - BALL_RADIUS
+  const halfWidth = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET
+  const halfHeight = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET
   const distances = [limit]
 
   if (unitDirection.x > 0) distances.push((halfWidth - start.x) / unitDirection.x)

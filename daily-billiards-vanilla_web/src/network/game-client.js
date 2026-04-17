@@ -139,6 +139,13 @@ export const GameClient = {
             console.log('Connected to server with PlayerID:', this.playerId);
             this.connectionState = 'connected';
 
+            // 显式房间号入房时，先订阅房间 topic，避免个人队列回包偶发缺失时卡在“入房中”。
+            if (requestedRoomId) {
+                this.roomId = requestedRoomId;
+                storage.setItem('billiards_room_id', this.roomId);
+                this.subscribeToRoom(this.roomId);
+            }
+
             // 订阅个人消息队列，用于接收房间分配等信息
             this.stompClient.subscribe('/queue/player/' + this.playerId, (sdkEvent) => {
                 const msg = JSON.parse(sdkEvent.body);

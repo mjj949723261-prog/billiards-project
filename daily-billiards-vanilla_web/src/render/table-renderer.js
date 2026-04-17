@@ -2,13 +2,14 @@ import {
   BALL_RADIUS,
   HEAD_STRING_X,
   MAX_PULL_DISTANCE,
+  PLAYABLE_AREA_INSET,
   POCKET_RADIUS,
   RAIL_THICKNESS,
   RELEASE_FLASH_DURATION,
   TABLE_HEIGHT,
   TABLE_WIDTH,
 } from '../constants.js'
-import { isPortraitLayout, shouldRotateGameplayStage } from '../layout/mode.js'
+import { hasDebugOverlay, isPortraitLayout, shouldRotateGameplayStage } from '../layout/mode.js'
 import { Vec2 } from '../math.js'
 import { GameClient } from '../network/game-client.js'
 
@@ -23,34 +24,29 @@ export function resolveTableSurfaceSourceRect(
   targetWidth = TABLE_WIDTH + RAIL_THICKNESS * 2,
   targetHeight = TABLE_HEIGHT + RAIL_THICKNESS * 2,
 ) {
-  const imageRatio = imageWidth / imageHeight
-  const targetRatio = targetWidth / targetHeight
-
-  if (!Number.isFinite(imageRatio) || !Number.isFinite(targetRatio) || imageWidth <= 0 || imageHeight <= 0) {
-    return { x: 0, y: 0, width: imageWidth, height: imageHeight }
-  }
-
-  if (Math.abs(imageRatio - targetRatio) < 0.0001) {
-    return { x: 0, y: 0, width: imageWidth, height: imageHeight }
-  }
-
-  if (imageRatio > targetRatio) {
-    const width = imageHeight * targetRatio
-    return {
-      x: (imageWidth - width) / 2,
-      y: 0,
-      width,
-      height: imageHeight,
-    }
-  }
-
-  const height = imageWidth / targetRatio
   return {
     x: 0,
-    y: (imageHeight - height) / 2,
+    y: 0,
     width: imageWidth,
-    height,
+    height: imageHeight,
   }
+}
+
+export function getPocketVisualCenters() {
+  const rollAreaX = -TABLE_WIDTH / 2 + PLAYABLE_AREA_INSET
+  const rollAreaY = -TABLE_HEIGHT / 2 + PLAYABLE_AREA_INSET
+  const rollAreaWidth = TABLE_WIDTH - PLAYABLE_AREA_INSET * 2
+  const rollAreaHeight = TABLE_HEIGHT - PLAYABLE_AREA_INSET * 2
+  const middlePocketOffsetY = 22
+
+  return [
+    new Vec2(rollAreaX - 3 , rollAreaY - 6 -3),
+    new Vec2(0, rollAreaY - middlePocketOffsetY),
+    new Vec2(rollAreaX + rollAreaWidth + 4, rollAreaY -6 - 3),
+    new Vec2(rollAreaX - 3, rollAreaY + rollAreaHeight + 9),
+    new Vec2(0, rollAreaY + rollAreaHeight + middlePocketOffsetY),
+    new Vec2(rollAreaX + rollAreaWidth + 4, rollAreaY + rollAreaHeight + 9),
+  ]
 }
 
 export function shouldRenderAimGuides(game, isMyTurn = GameClient.isMyTurn) {
@@ -76,10 +72,11 @@ export function getRenderedCuePowerRatio(game) {
 export function drawGame(game) {
   const { canvas, ctx } = game
   const isPortrait = shouldRotateGameplayStage(document, window)
-  const rollAreaX = -TABLE_WIDTH / 2 + BALL_RADIUS
-  const rollAreaY = -TABLE_HEIGHT / 2 + BALL_RADIUS
-  const rollAreaWidth = TABLE_WIDTH - BALL_RADIUS * 2
-  const rollAreaHeight = TABLE_HEIGHT - BALL_RADIUS * 2
+  const showDebugOverlay = hasDebugOverlay(window)
+  const rollAreaX = -TABLE_WIDTH / 2 + PLAYABLE_AREA_INSET
+  const rollAreaY = -TABLE_HEIGHT / 2 + PLAYABLE_AREA_INSET
+  const rollAreaWidth = TABLE_WIDTH - PLAYABLE_AREA_INSET * 2
+  const rollAreaHeight = TABLE_HEIGHT - PLAYABLE_AREA_INSET * 2
 
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   ctx.save()
@@ -109,7 +106,7 @@ export function drawGame(game) {
       -TABLE_WIDTH / 2 - RAIL_THICKNESS,
       -TABLE_HEIGHT / 2 - RAIL_THICKNESS,
       TABLE_WIDTH + RAIL_THICKNESS * 2,
-      TABLE_HEIGHT + RAIL_THICKNESS * 2
+      TABLE_HEIGHT + RAIL_THICKNESS * 2,
     )
     ctx.shadowColor = 'transparent'
     ctx.shadowBlur = 0
@@ -245,11 +242,26 @@ export function drawGame(game) {
   })
   }
 
-  ctx.fillStyle = 'rgba(255, 59, 48, 0.16)'
-  ctx.fillRect(rollAreaX, rollAreaY, rollAreaWidth, rollAreaHeight)
-  ctx.strokeStyle = 'rgba(255, 59, 48, 0.85)'
-  ctx.lineWidth = 2
-  ctx.strokeRect(rollAreaX, rollAreaY, rollAreaWidth, rollAreaHeight)
+  if (showDebugOverlay) {
+    ctx.fillStyle = 'rgba(59, 130, 246, 0.16)'
+    ctx.fillRect(rollAreaX, rollAreaY, rollAreaWidth, rollAreaHeight)
+    ctx.strokeStyle = 'rgba(59, 130, 246, 0.85)'
+    ctx.lineWidth = 2
+    ctx.strokeRect(rollAreaX, rollAreaY, rollAreaWidth, rollAreaHeight)
+
+    const pocketVisuals = getPocketVisualCenters()
+    ctx.lineWidth = 2
+    pocketVisuals.forEach(pocket => {
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.45)'
+      ctx.beginPath()
+      ctx.arc(pocket.x, pocket.y, POCKET_RADIUS, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(185, 28, 28, 0.95)'
+      ctx.beginPath()
+      ctx.arc(pocket.x, pocket.y, POCKET_RADIUS, 0, Math.PI * 2)
+      ctx.stroke()
+    })
+  }
 
   // Draw ball shadows first to prevent overlapping issues
   game.balls.forEach(ball => {

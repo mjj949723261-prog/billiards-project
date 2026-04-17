@@ -34,6 +34,14 @@ export function hasDebugAlwaysDrag(win = globalThis.window) {
   return params.get('debugAlwaysDrag') === '1'
 }
 
+export function hasDebugOverlay(win = globalThis.window) {
+  const search = win?.location?.search
+  if (!search) return false
+
+  const params = new URLSearchParams(search)
+  return params.get('dev') === '1'
+}
+
 export function isLandscapeSemanticMobile(doc = globalThis.document) {
   const body = doc?.body
   return !!(body?.classList.contains('layout-landscape')

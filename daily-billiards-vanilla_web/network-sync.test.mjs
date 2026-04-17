@@ -148,14 +148,13 @@ test('remote cue rendering keeps pullback visible even when local drag flag is f
   assert.equal(getRenderedCuePullDistance({ showRemoteCue: false, isDragging: false, pullDistance: 36 }), 0)
 })
 
-test('table surface source rect crops wide table art to the gameplay table ratio', () => {
+test('table surface source rect keeps the full table art when full-image display is enabled', () => {
   const rect = resolveTableSurfaceSourceRect(2998, 1408)
-  const targetRatio = (820 + 34 * 2) / (410 + 34 * 2)
 
-  assert.ok(rect.x > 0)
+  assert.equal(rect.x, 0)
   assert.equal(rect.y, 0)
+  assert.equal(rect.width, 2998)
   assert.equal(rect.height, 1408)
-  assert.ok(Math.abs(rect.width / rect.height - targetRatio) < 0.001)
 })
 
 test('foul status snapshot preserves remaining toast time for remote sync', () => {
@@ -1107,21 +1106,35 @@ test('gameplay fits table cloth first and treats rail thickness as a separate vi
 test('debug rolling area overlay marks the playable cloth bounds in the pixi renderer', () => {
   const rendererSource = fs.readFileSync(new URL('./src/render/pixi-renderer.js', import.meta.url), 'utf8')
 
-  assert.match(rendererSource, /const rollAreaX = -TABLE_WIDTH \/ 2 \+ BALL_RADIUS;/)
-  assert.match(rendererSource, /const rollAreaY = -TABLE_HEIGHT \/ 2 \+ BALL_RADIUS;/)
-  assert.match(rendererSource, /const rollAreaWidth = TABLE_WIDTH - BALL_RADIUS \* 2;/)
-  assert.match(rendererSource, /const rollAreaHeight = TABLE_HEIGHT - BALL_RADIUS \* 2;/)
-  assert.match(rendererSource, /rollArea\.beginFill\(0xff3b30,\s*0\.16\);/)
+  assert.match(rendererSource, /const rollAreaX = -TABLE_WIDTH \/ 2 \+ PLAYABLE_AREA_INSET;/)
+  assert.match(rendererSource, /const rollAreaY = -TABLE_HEIGHT \/ 2 \+ PLAYABLE_AREA_INSET;/)
+  assert.match(rendererSource, /const rollAreaWidth = TABLE_WIDTH - PLAYABLE_AREA_INSET \* 2;/)
+  assert.match(rendererSource, /const rollAreaHeight = TABLE_HEIGHT - PLAYABLE_AREA_INSET \* 2;/)
+  assert.match(rendererSource, /rollArea\.beginFill\(0x3b82f6,\s*0\.16\);/)
 })
 
 test('debug rolling area overlay marks the playable cloth bounds in the canvas fallback', () => {
   const canvasSource = fs.readFileSync(new URL('./src/render/table-renderer.js', import.meta.url), 'utf8')
 
-  assert.match(canvasSource, /const rollAreaX = -TABLE_WIDTH \/ 2 \+ BALL_RADIUS/)
-  assert.match(canvasSource, /const rollAreaY = -TABLE_HEIGHT \/ 2 \+ BALL_RADIUS/)
-  assert.match(canvasSource, /const rollAreaWidth = TABLE_WIDTH - BALL_RADIUS \* 2/)
-  assert.match(canvasSource, /const rollAreaHeight = TABLE_HEIGHT - BALL_RADIUS \* 2/)
-  assert.match(canvasSource, /ctx\.fillStyle = 'rgba\(255,\s*59,\s*48,\s*0\.16\)'/)
+  assert.match(canvasSource, /const rollAreaX = -TABLE_WIDTH \/ 2 \+ PLAYABLE_AREA_INSET/)
+  assert.match(canvasSource, /const rollAreaY = -TABLE_HEIGHT \/ 2 \+ PLAYABLE_AREA_INSET/)
+  assert.match(canvasSource, /const rollAreaWidth = TABLE_WIDTH - PLAYABLE_AREA_INSET \* 2/)
+  assert.match(canvasSource, /const rollAreaHeight = TABLE_HEIGHT - PLAYABLE_AREA_INSET \* 2/)
+  assert.match(canvasSource, /ctx\.fillStyle = 'rgba\(59,\s*130,\s*246,\s*0\.16\)'/)
+})
+
+test('playable area inset is shared by physics, aiming, placement, and the debug overlay', () => {
+  const constantsSource = fs.readFileSync(new URL('./src/constants.js', import.meta.url), 'utf8')
+  const physicsSource = fs.readFileSync(new URL('./src/core/physics.js', import.meta.url), 'utf8')
+  const aimSource = fs.readFileSync(new URL('./src/core/aim.js', import.meta.url), 'utf8')
+  const gameSource = fs.readFileSync(new URL('./src/game.js', import.meta.url), 'utf8')
+
+  assert.match(constantsSource, /export const PLAYABLE_AREA_INSET = BALL_RADIUS \+ 24;/)
+  assert.match(physicsSource, /const halfWidth = TABLE_WIDTH \/ 2 - PLAYABLE_AREA_INSET/)
+  assert.match(physicsSource, /const halfHeight = TABLE_HEIGHT \/ 2 - PLAYABLE_AREA_INSET/)
+  assert.match(aimSource, /const halfWidth = TABLE_WIDTH \/ 2 - PLAYABLE_AREA_INSET/)
+  assert.match(aimSource, /const halfHeight = TABLE_HEIGHT \/ 2 - PLAYABLE_AREA_INSET/)
+  assert.match(gameSource, /const hw = TABLE_WIDTH \/ 2 - PLAYABLE_AREA_INSET, hh = TABLE_HEIGHT \/ 2 - PLAYABLE_AREA_INSET;/)
 })
 
 test('gameplay top hud uses slim side rails around the centered timer instead of large corner cards', () => {
@@ -1159,6 +1172,7 @@ test('club table realism render contract', () => {
   assert.match(tableRendererSource, /if \(tableSurfaceImage\) \{\s*tableSurfaceImage\.src = '\.\/assets\/table-surface\.png'/)
   assert.match(tableRendererSource, /if \(tableSurfaceImage && tableSurfaceImage\.complete && tableSurfaceImage\.naturalWidth > 0\) \{/)
   assert.match(tableRendererSource, /ctx\.drawImage\(\s*tableSurfaceImage,/)
+  assert.doesNotMatch(rendererSource, /new PIXI\.Texture\(\s*this\.textures\.tableSurface\.baseTexture,/)
 })
 
 test('pixi renderer keeps a single cue overlay layer when redrawing the table', () => {
