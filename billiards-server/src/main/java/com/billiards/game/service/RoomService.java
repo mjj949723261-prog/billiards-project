@@ -12,6 +12,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -37,8 +38,6 @@ public class RoomService {
     private UserStatsMapper userStatsMapper;
 
     private static final int TURN_TIME_LIMIT = 45;
-    private static final long SYNC_INTERVAL_MS = 100;
-
     public synchronized void processJoin(String playerId, String requestedRoomId, String nickname) {
         Optional<BilliardsRoom> currentRoom = roomRepository.findAll().stream()
                 .filter(r -> r.getPlayerIds().contains(playerId))
@@ -95,7 +94,6 @@ public class RoomService {
 
             if (oldStatus == BilliardsRoom.GameStatus.WAITING && room.getStatus() == BilliardsRoom.GameStatus.PLAYING) {
                 startTurnTimer(room);
-                startPeriodicSync(room.getRoomId());
                 notifyGameStart(room);
             }
         }
@@ -162,28 +160,74 @@ public class RoomService {
         });
     }
 
+    public synchronized Object recordShotStart(String roomId, String senderId, Object content) {
+        Optional<BilliardsRoom> roomOpt = roomRepository.findById(roomId);
+        if (roomOpt.isEmpty()) return content;
+
+        BilliardsRoom room = roomOpt.get();
+        synchronized (room) {
+            if (senderId != null && !senderId.equals(room.getCurrentTurnPlayerId())) {
+                return null;
+            }
+
+            Map<String, Object> canonicalShot = new LinkedHashMap<>();
+            canonicalShot.put("protocol", "shot-start-v1");
+            canonicalShot.put("senderId", senderId);
+
+            room.setLastShotPlayerId(senderId);
+            if (content instanceof Map<?, ?> contentMap) {
+                Object shotIdObj = contentMap.get("shotId");
+                if (shotIdObj instanceof String shotId && !shotId.isBlank()) {
+                    room.setLastShotId(shotId);
+                    canonicalShot.put("shotId", shotId);
+                }
+
+                Object startedAtObj = contentMap.get("startedAt");
+                if (startedAtObj instanceof Number startedAt) {
+                    room.setLastShotStartedAt(startedAt.longValue());
+                    canonicalShot.put("startedAt", startedAt.longValue());
+                }
+
+                Object protocolObj = contentMap.get("protocol");
+                if (protocolObj instanceof String protocol && !protocol.isBlank()) {
+                    room.setLastShotProtocol(protocol);
+                    canonicalShot.put("protocol", protocol);
+                } else {
+                    room.setLastShotProtocol("shot-start-v1");
+                }
+
+                Object aimAngleObj = contentMap.get("aimAngle");
+                if (aimAngleObj instanceof Number aimAngle) canonicalShot.put("aimAngle", aimAngle.doubleValue());
+
+                Object powerRatioObj = contentMap.get("powerRatio");
+                if (powerRatioObj instanceof Number powerRatio) canonicalShot.put("powerRatio", powerRatio.doubleValue());
+
+                Object cueBallXObj = contentMap.get("cueBallX");
+                if (cueBallXObj instanceof Number cueBallX) canonicalShot.put("cueBallX", cueBallX.doubleValue());
+
+                Object cueBallYObj = contentMap.get("cueBallY");
+                if (cueBallYObj instanceof Number cueBallY) canonicalShot.put("cueBallY", cueBallY.doubleValue());
+
+                Object randomSeedObj = contentMap.get("randomSeed");
+                canonicalShot.put("randomSeed", randomSeedObj);
+            } else {
+                room.setLastShotProtocol("shot-start-v1");
+            }
+
+            room.setAwaitingSettledSync(true);
+            roomRepository.save(room);
+            canonicalShot.put("shotId", room.getLastShotId());
+            canonicalShot.put("startedAt", room.getLastShotStartedAt());
+            canonicalShot.put("protocol", room.getLastShotProtocol());
+            return canonicalShot;
+        }
+    }
+
     private void startTurnTimer(BilliardsRoom room) {
         long expire = System.currentTimeMillis() + TURN_TIME_LIMIT * 1000L;
         room.setExpireAt(expire);
         roomRepository.save(room);
         turnTimerService.startTimer(room.getRoomId(), TURN_TIME_LIMIT, () -> handleTurnTimeout(room.getRoomId()));
-    }
-
-    private void startPeriodicSync(String roomId) {
-        turnTimerService.startPeriodicSync(roomId, SYNC_INTERVAL_MS, () -> {
-            roomRepository.findById(roomId).ifPresent(room -> {
-                messagingTemplate.convertAndSend("/topic/room/" + roomId, GameMessage.builder()
-                        .type(GameMessage.MessageType.SYNC_STATE)
-                        .roomId(roomId)
-                        .senderId("SYSTEM")
-                        .content(Map.of(
-                            "room", room,
-                            "expireAt", room.getExpireAt(), 
-                            "serverTime", System.currentTimeMillis()
-                        ))
-                        .build());
-            });
-        });
     }
 
     private void handleTurnTimeout(String roomId) {
@@ -196,6 +240,7 @@ public class RoomService {
                 String nextPlayerId = room.getPlayerIds().get(nextIndex);
                 
                 room.setCurrentTurnPlayerId(nextPlayerId);
+                room.setAwaitingSettledSync(false);
                 startTurnTimer(room);
                 roomRepository.save(room);
                 
@@ -223,14 +268,44 @@ public class RoomService {
         });
     }
 
-    public synchronized void syncRoomState(String roomId, String senderId, Object content) {
-        roomRepository.findById(roomId).ifPresent(room -> {
+    public synchronized Map<String, Object> syncRoomState(String roomId, String senderId, Object content) {
+        Optional<BilliardsRoom> roomOpt = roomRepository.findById(roomId);
+        if (roomOpt.isEmpty()) return Map.of("accepted", false, "code", "ROOM_NOT_FOUND");
+
+        BilliardsRoom room = roomOpt.get();
+        synchronized (room) {
             if (senderId != null && !senderId.equals(room.getCurrentTurnPlayerId())) {
-                return;
+                return Map.of("accepted", false, "code", "NOT_CURRENT_PLAYER");
+            }
+
+            boolean isLive = false;
+            boolean isSettledSync = false;
+            String sourceShotId = null;
+            if (content instanceof Map<?, ?> contentMap) {
+                Object isLiveObj = contentMap.get("isLive");
+                if (isLiveObj instanceof Boolean) {
+                    isLive = (Boolean) isLiveObj;
+                }
+                Object syncKindObj = contentMap.get("syncKind");
+                if (syncKindObj instanceof String syncKind) {
+                    isSettledSync = "settled".equals(syncKind);
+                }
+                Object sourceShotIdObj = contentMap.get("sourceShotId");
+                if (sourceShotIdObj instanceof String shotId && !shotId.isBlank()) {
+                    sourceShotId = shotId;
+                }
+            }
+
+            if (isSettledSync) {
+                String activeShotId = room.getLastShotId();
+                if (sourceShotId == null || activeShotId == null || !activeShotId.equals(sourceShotId)) {
+                    log.warn("拒绝过期 settled sync, roomId={}, senderId={}, sourceShotId={}, activeShotId={}", roomId, senderId, sourceShotId, activeShotId);
+                    return buildSyncRejectedPayload(room, sourceShotId, activeShotId);
+                }
             }
 
             room.setBallState(content);
-            
+
             if (content instanceof Map<?, ?> contentMap) {
                 try {
                     Object scores = contentMap.get("scores");
@@ -272,22 +347,61 @@ public class RoomService {
                         handleGameOverStats(room, wIdx.intValue());
                     }
                 }
-            }
 
-            roomRepository.save(room);
-            
-            boolean isLive = false;
-            if (content instanceof Map<?, ?> contentMap) {
-                Object isLiveObj = contentMap.get("isLive");
-                if (isLiveObj instanceof Boolean) {
-                    isLive = (Boolean) isLiveObj;
+                if (sourceShotId != null) {
+                    room.setLastShotId(sourceShotId);
+                }
+
+                Object syncKindObj = contentMap.get("syncKind");
+                if (syncKindObj instanceof String syncKind && "settled".equals(syncKind)) {
+                    room.setAwaitingSettledSync(false);
+                    Object settledAtObj = contentMap.get("settledAt");
+                    if (settledAtObj instanceof Number settledAt) {
+                        room.setLastSettledAt(settledAt.longValue());
+                    } else {
+                        room.setLastSettledAt(System.currentTimeMillis());
+                    }
+                    Object settledSignatureObj = contentMap.get("settledSignature");
+                    if (settledSignatureObj instanceof String settledSignature && !settledSignature.isBlank()) {
+                        room.setLastSettledSignature(settledSignature);
+                    }
                 }
             }
 
-            if (!isLive && room.getStatus() == BilliardsRoom.GameStatus.PLAYING) {
+            roomRepository.save(room);
+
+            if ((isSettledSync || !isLive) && room.getStatus() == BilliardsRoom.GameStatus.PLAYING) {
                 resetTurnTimer(roomId);
             }
-        });
+            return Map.of(
+                    "accepted", true,
+                    "broadcastContent", buildAuthoritativeSyncPayload(room, isSettledSync)
+            );
+        }
+    }
+
+    private Map<String, Object> buildSyncRejectedPayload(BilliardsRoom room, String sourceShotId, String activeShotId) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("accepted", false);
+        payload.put("code", "STALE_SETTLED_SYNC");
+        payload.put("roomId", room.getRoomId());
+        payload.put("sourceShotId", sourceShotId);
+        payload.put("activeShotId", activeShotId);
+        payload.put("room", room);
+        payload.put("authoritativeSnapshot", room.getBallState());
+        payload.put("serverTime", System.currentTimeMillis());
+        return payload;
+    }
+
+    private Map<String, Object> buildAuthoritativeSyncPayload(BilliardsRoom room, boolean isSettledSync) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("authoritative", true);
+        payload.put("syncKind", isSettledSync ? "authoritative-settled" : "authoritative-sync");
+        payload.put("room", room);
+        payload.put("ballState", room.getBallState());
+        payload.put("lastSettledSignature", room.getLastSettledSignature());
+        payload.put("serverTime", System.currentTimeMillis());
+        return payload;
     }
 
     private void handleGameOverStats(BilliardsRoom room, int winnerIndex) {

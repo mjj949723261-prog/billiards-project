@@ -133,14 +133,14 @@ export class Ball {
    * 更新下一帧球的位置、速度和旋转状态。
    * 应用摩擦力，并在速度低于阈值时使球停止运动。
    */
-  update() {
+  update(dtScale = 1) {
     if (this.pocketed) return;
     const speed = this.vel.length();
-    this.pos.add(this.vel);
+    this.pos.add(this.vel.clone().mul(dtScale));
 
     // 根据移动距离和方向更新 3D 旋转矩阵
     if (speed > 0.01) {
-      const angle = speed / BALL_RADIUS;
+      const angle = (speed * dtScale) / BALL_RADIUS;
       const axisX = -this.vel.y / speed;
       const axisY = this.vel.x / speed;
       const rot = mat3RotateColMajor(axisX, axisY, 0, -angle);
@@ -149,12 +149,12 @@ export class Ball {
 
     // 优化后的单一摩擦力模型
     // 1. 基础阻力
-    this.vel.mul(0.992); 
+    this.vel.mul(Math.pow(0.992, dtScale)); 
 
     // 2. 线性减速（模拟真实滚动摩擦直到完全静止）
     if (speed > 0) {
         const linearDecel = 0.005; 
-        const drop = Math.min(speed, linearDecel);
+        const drop = Math.min(speed, linearDecel * dtScale);
         const ratio = (speed - drop) / speed;
         this.vel.mul(ratio);
     }

@@ -37,6 +37,27 @@ public class BilliardsRoom {
     
     /** 球的物理状态数据 (存储所有球的坐标、速度、是否入袋等，通常为 Map 结构) */
     private Object ballState;
+
+    /** 最近一次正式出杆的唯一标识。 */
+    private String lastShotId;
+
+    /** 最近一次正式出杆的发起玩家 ID。 */
+    private String lastShotPlayerId;
+
+    /** 最近一次正式出杆的启动时间戳。 */
+    private long lastShotStartedAt;
+
+    /** 最近一次正式出杆使用的协议版本。 */
+    private String lastShotProtocol;
+
+    /** 服务端是否仍在等待最近一杆的 settled 对账。 */
+    private boolean awaitingSettledSync = false;
+
+    /** 最近一次收到 settled 对账的时间戳。 */
+    private long lastSettledAt = 0;
+
+    /** 最近一次收到 settled 对账的结果签名。 */
+    private String lastSettledSignature;
     
     /** 是否处于“自由球”状态 (母球可以被玩家手动移动) */
     private boolean ballInHand = false;
@@ -107,6 +128,13 @@ public class BilliardsRoom {
         this.player1Group = "OPEN";
         this.player2Group = "OPEN";
         this.ballState = null;
+        this.lastShotId = null;
+        this.lastShotPlayerId = null;
+        this.lastShotStartedAt = 0;
+        this.lastShotProtocol = null;
+        this.awaitingSettledSync = false;
+        this.lastSettledAt = 0;
+        this.lastSettledSignature = null;
         this.rematchReadyPlayers.clear();
     }
 
@@ -138,6 +166,27 @@ public class BilliardsRoom {
 
     public Object getBallState() { return ballState; }
     public void setBallState(Object ballState) { this.ballState = ballState; }
+
+    public String getLastShotId() { return lastShotId; }
+    public void setLastShotId(String lastShotId) { this.lastShotId = lastShotId; }
+
+    public String getLastShotPlayerId() { return lastShotPlayerId; }
+    public void setLastShotPlayerId(String lastShotPlayerId) { this.lastShotPlayerId = lastShotPlayerId; }
+
+    public long getLastShotStartedAt() { return lastShotStartedAt; }
+    public void setLastShotStartedAt(long lastShotStartedAt) { this.lastShotStartedAt = lastShotStartedAt; }
+
+    public String getLastShotProtocol() { return lastShotProtocol; }
+    public void setLastShotProtocol(String lastShotProtocol) { this.lastShotProtocol = lastShotProtocol; }
+
+    public boolean isAwaitingSettledSync() { return awaitingSettledSync; }
+    public void setAwaitingSettledSync(boolean awaitingSettledSync) { this.awaitingSettledSync = awaitingSettledSync; }
+
+    public long getLastSettledAt() { return lastSettledAt; }
+    public void setLastSettledAt(long lastSettledAt) { this.lastSettledAt = lastSettledAt; }
+
+    public String getLastSettledSignature() { return lastSettledSignature; }
+    public void setLastSettledSignature(String lastSettledSignature) { this.lastSettledSignature = lastSettledSignature; }
 
     public boolean isBallInHand() { return ballInHand; }
     public void setBallInHand(boolean ballInHand) { this.ballInHand = ballInHand; }

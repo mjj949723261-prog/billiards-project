@@ -23,32 +23,22 @@ import { evaluateShot } from './rules.js'
  * 编排球体位置更新、碰撞检测以及状态检查。
  * 
  * @param {BilliardsGame} game - 游戏实例。
- * @param {number} dt - 时间步长缩放。
+ * @param {number} dt - 固定时间步长相对旧 60fps 逻辑的缩放。
+ * @param {number} deltaSeconds - 当前物理步的秒数。
  */
-export function updateGamePhysics(game, dt) {
+export function updateGamePhysics(game, dt, deltaSeconds) {
   const active = game.balls.filter(ball => !ball.pocketed)
   
   // 更新每个球的位置和旋转
   active.forEach(ball => {
-    ball.update()
+    ball.update(dt)
   })
-
-  const now = Date.now()
-  const deltaSeconds = (now - game.lastTick) / 1000
-  
-  game.lastTick = now
   game.releaseFlash = Math.max(0, game.releaseFlash - deltaSeconds)
 
   // 更新进球得分动画的时间
   game.scorePocketEffects = game.scorePocketEffects
     .map(effect => ({ ...effect, age: effect.age + deltaSeconds }))
     .filter(effect => effect.age < effect.duration)
-
-  game.updateTimerUI()
-  const statusNode = document.getElementById('status')
-  if (statusNode) {
-    statusNode.innerText = game.getStatusText()
-  }
   
   // 时间耗尽逻辑
   if (game.timeLeft <= 0 && !game.isMoving()) {
