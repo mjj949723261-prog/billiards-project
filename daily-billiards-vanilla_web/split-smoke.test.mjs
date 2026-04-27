@@ -38,6 +38,21 @@ test('Ball initializes with position and can update friction', () => {
   assert.equal(ball.pos.y, 20)
 })
 
+test('Ball keeps render state separate while smoothing toward physics state', () => {
+  const ball = new Ball(10, 20, '#ffffff')
+
+  assert.equal(ball.physicsPos.x, 10)
+  assert.equal(ball.renderPos.x, 10)
+
+  ball.pos = new Vec2(30, 50)
+  ball.updateRender(0.25)
+
+  assert.equal(ball.physicsPos.x, 30)
+  assert.equal(ball.physicsPos.y, 50)
+  assert.equal(ball.renderPos.x, 15)
+  assert.equal(ball.renderPos.y, 27.5)
+})
+
 test('aim helpers detect first ball hit before wall', () => {
   const cueBall = new Ball(0, 0, '#fff')
   const targetBall = new Ball(80, 0, '#f00')

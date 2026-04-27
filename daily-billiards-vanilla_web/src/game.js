@@ -62,6 +62,8 @@ export class BilliardsGame {
     this.lastTick = Date.now()
     /** @type {number} 上一次物理更新的时间戳。 */
     this.lastUpdate = Date.now()
+    /** @type {number} 固定步长物理累积器（毫秒）。 */
+    this.physicsAccumulatorMs = 0
     /** @type {number} UI 上显示的倒计时整数。 */
     this.displayedSecond = TURN_TIME_LIMIT
     /** @type {number} 回合到期的时间戳。 */
@@ -183,6 +185,7 @@ export class BilliardsGame {
     this.balls = []; this.scores = { 1: 0, 2: 0 }; this.playerGroups = { 1: null, 2: null }
     this.isGameOver = false; this.currentPlayer = 1; this.timeLeft = TURN_TIME_LIMIT
     this.lastTick = Date.now(); this.lastUpdate = Date.now(); this.displayedSecond = TURN_TIME_LIMIT
+    this.physicsAccumulatorMs = 0
     this.timerPaused = false
     this.playerIndex = GameClient.playerIndex || null
     this.hasPointerInput = false
@@ -291,7 +294,12 @@ export class BilliardsGame {
    */
   getGameStateSnapshot() {
     return {
-      balls: this.balls.map(b => ({ type: b.type, label: b.label, x: b.pos.x, y: b.pos.y, vx: b.vel.x, vy: b.vel.y, rot: Array.from(b.rotMat), pocketed: b.pocketed })),
+      balls: this.balls.map(b => {
+        const pos = b.physicsPos || b.pos
+        const vel = b.physicsVel || b.vel || new Vec2(0, 0)
+        const rot = b.physicsRot || b.rotMat || new Float32Array(9)
+        return { type: b.type, label: b.label, x: pos.x, y: pos.y, vx: vel.x, vy: vel.y, rot: Array.from(rot), pocketed: b.pocketed }
+      }),
       currentPlayer: this.currentPlayer, timeLeft: this.timeLeft, ballInHand: this.ballInHand, ballInHandZone: this.ballInHandZone, playerGroups: { ...this.playerGroups }, scores: { ...this.scores }, isBreakShot: this.isBreakShot, ...createStatusSyncSnapshot(this),
     }
   }
@@ -325,31 +333,50 @@ export class BilliardsGame {
     const ballsToApply = Array.isArray(rawBallState) ? rawBallState : rawBallState?.balls;
     if (!ballsToApply || !Array.isArray(ballsToApply)) return;
 
-    const isServerSync = snapshot.room !== undefined;
-    const isLive = snapshot.isLive === true || isServerSync;
+    const isPlacementLiveSync = snapshot.isLive === true && snapshot.ballInHand === true;
+    const isMotionLiveSync = snapshot.isLive === true && !isPlacementLiveSync;
+
+    // Movement-period whole-table live sync causes remote physics to get
+    // continuously rewritten during dense collisions. Ignore those updates
+    // and only keep ball-in-hand placement previews and settled snapshots.
+    if (isMotionLiveSync && !snapshot.forceBusinessUpdate) return;
 
     ballsToApply.forEach(s => {
       const ball = this.balls.find(b => b.type === s.type && b.label === s.label)
       if (ball) {
-        if (isLive) {
-            // 手机端优化：更小的权重 (0.15) 让高频同步纠偏极其平滑
-            const weight = isServerSync ? 0.2 : 0.15; 
-            ball.pos.x = ball.pos.x * (1 - weight) + s.x * weight;
-            ball.pos.y = ball.pos.y * (1 - weight) + s.y * weight;
-            if (s.vx !== undefined && (Math.abs(s.vx) > 0.05 || Math.abs(s.vy) > 0.05)) {
-                ball.vel.x = ball.vel.x * 0.8 + s.vx * 0.2;
-                ball.vel.y = ball.vel.y * 0.8 + s.vy * 0.2;
-            }
-            if (s.rot && s.rot.length === 9) ball.rotMat.set(s.rot);
-            ball.pocketed = s.pocketed;
-        } else {
-            ball.pos.x = s.x; ball.pos.y = s.y; ball.pocketed = s.pocketed; ball.vel = new Vec2(0, 0);
-            if (s.rot) ball.rotMat.set(s.rot);
+        const physicsPos = ball.physicsPos || ball.pos
+        const physicsVel = ball.physicsVel || ball.vel
+        const physicsRot = ball.physicsRot || ball.rotMat
+        const renderPos = ball.renderPos || physicsPos
+        const renderRot = ball.renderRot || physicsRot
+        const wasPocketed = ball.pocketed
+
+        physicsPos.x = s.x;
+        physicsPos.y = s.y;
+        ball.pocketed = s.pocketed;
+        if (!isPlacementLiveSync) {
+          physicsVel.x = 0;
+          physicsVel.y = 0;
+        } else if (s.vx !== undefined && s.vy !== undefined) {
+          physicsVel.x = s.vx;
+          physicsVel.y = s.vy;
+        }
+        if (s.rot) physicsRot.set(s.rot);
+
+        const deviation = Math.hypot(physicsPos.x - renderPos.x, physicsPos.y - renderPos.y)
+        const shouldSnapRender = isPlacementLiveSync || wasPocketed !== ball.pocketed || deviation > BALL_RADIUS * 2
+
+        if (shouldSnapRender && typeof ball.syncPhysicsToRender === 'function') {
+          ball.syncPhysicsToRender()
+        } else if (shouldSnapRender) {
+          renderPos.x = physicsPos.x
+          renderPos.y = physicsPos.y
+          if (renderRot?.set) renderRot.set(physicsRot)
         }
       }
     })
 
-    if (isLive && !snapshot.forceBusinessUpdate) return;
+    if (isPlacementLiveSync && !snapshot.forceBusinessUpdate) return;
     const room = snapshot.room || snapshot;
     if (room.currentPlayer !== undefined) this.currentPlayer = room.currentPlayer
     if (room.ballInHand !== undefined) this.ballInHand = room.ballInHand
@@ -468,10 +495,10 @@ export class BilliardsGame {
    */
   update() {
     const now = Date.now();
-    const dt = Math.min(2.0, (now - this.lastUpdate) / 16.66);
+    const frameMs = Math.min(80, now - this.lastUpdate);
     this.lastUpdate = now;
 
-    updateGamePhysics(this, dt);
+    updateGamePhysics(this, frameMs);
     
     if (!this.isGameOver) {
         if (this.timerPaused) {} 
@@ -480,7 +507,7 @@ export class BilliardsGame {
             this.timeLeft = Math.max(0, remaining / 1000);
             if (remaining <= 0 && !this.isTurnLocked && !this.isMoving() && !this.shotActive) { this.isTurnLocked = true; this.isDragging = false; this.pullDistance = 0; this.updateUI(); if (GameClient.isMyTurn) this.setStatusMessage("时间到，回合结束", 2000); }
         } else if (!this.isMoving() && !this.shotActive) {
-            const dtSec = (now - this.lastTick) / 1000;
+            const dtSec = frameMs / 1000;
             this.timeLeft = Math.max(0, this.timeLeft - dtSec);
         }
         const shouldHideTimer = this.timerPaused || (GameClient.isMyTurn && (this.isMoving() || this.shotActive));
@@ -491,7 +518,7 @@ export class BilliardsGame {
     this.collisionEffects = this.collisionEffects.map(e => ({ ...e, age: e.age + 1 })).filter(e => e.age < 15);
 
     if (this.isMoving() && GameClient.isMyTurn) {
-        if (++this.syncCounter % 2 === 0) GameClient.sendSync({ balls: this.balls.map(b => ({ type: b.type, label: b.label, x: b.pos.x, y: b.pos.y, rot: Array.from(b.rotMat), pocketed: b.pocketed, vx: b.vel.x, vy: b.vel.y })), isLive: true });
+        this.syncCounter = 0;
     } else this.syncCounter = 0;
 
     if (GameClient.isMyTurn && this.ballInHand && this.placingCue) {
@@ -503,6 +530,12 @@ export class BilliardsGame {
         this.updateUI();
     } else if (this.showRemoteCue) this.updateUI();
     else this.aimSyncCounter = 0;
+
+    this.balls.forEach(ball => {
+      if (typeof ball.updateRender === 'function') {
+        ball.updateRender(0.25);
+      }
+    });
   }
 
   /**

@@ -101,10 +101,10 @@ export class Ball {
    * @param {string} [label=''] - 显示标签（如球号）。
    */
   constructor(x, y, color, type = 'solid', label = '') {
-    /** @type {Vec2} 球的位置坐标。 */
-    this.pos = new Vec2(x, y);
-    /** @type {Vec2} 球的速度向量。 */
-    this.vel = new Vec2(0, 0);
+    /** @type {Vec2} 物理层位置。 */
+    this.physicsPos = new Vec2(x, y);
+    /** @type {Vec2} 物理层速度。 */
+    this.physicsVel = new Vec2(0, 0);
     /** @type {string} 球的显示颜色。 */
     this.color = color;
     /** @type {string} 球的类型。 */
@@ -113,9 +113,27 @@ export class Ball {
     this.label = label;
     /** @type {boolean} 是否已入袋。 */
     this.pocketed = false;
-    /** @type {Float32Array} 跟踪球体在 3D 空间中的旋转矩阵。 */
-    // 初始化旋转：绕 Y 轴旋转 -90 度，使局部 X 轴（数字面）指向观察者
-    this.rotMat = mat3RotateColMajor(0, 1, 0, -Math.PI / 2);
+    /** @type {Float32Array} 物理层旋转矩阵。 */
+    this.physicsRot = mat3RotateColMajor(0, 1, 0, -Math.PI / 2);
+    /** @type {Vec2} 渲染层位置。 */
+    this.renderPos = this.physicsPos.clone();
+    /** @type {Float32Array} 渲染层旋转矩阵。 */
+    this.renderRot = new Float32Array(this.physicsRot);
+
+    Object.defineProperties(this, {
+      pos: {
+        get: () => this.physicsPos,
+        set: (value) => { this.physicsPos = value; },
+      },
+      vel: {
+        get: () => this.physicsVel,
+        set: (value) => { this.physicsVel = value; },
+      },
+      rotMat: {
+        get: () => this.physicsRot,
+        set: (value) => { this.physicsRot = value; },
+      },
+    });
     
     let hex = color;
     if (hex.startsWith('#')) hex = hex.slice(1);
@@ -133,35 +151,66 @@ export class Ball {
    * 更新下一帧球的位置、速度和旋转状态。
    * 应用摩擦力，并在速度低于阈值时使球停止运动。
    */
-  update() {
+  update(dt = 1) {
     if (this.pocketed) return;
-    const speed = this.vel.length();
-    this.pos.add(this.vel);
+    const speed = this.physicsVel.length();
+    this.physicsPos.add(this.physicsVel.clone().mul(dt));
 
     // 根据移动距离和方向更新 3D 旋转矩阵
     if (speed > 0.01) {
-      const angle = speed / BALL_RADIUS;
-      const axisX = -this.vel.y / speed;
-      const axisY = this.vel.x / speed;
+      const angle = (speed * dt) / BALL_RADIUS;
+      const axisX = -this.physicsVel.y / speed;
+      const axisY = this.physicsVel.x / speed;
       const rot = mat3RotateColMajor(axisX, axisY, 0, -angle);
-      this.rotMat = mat3Multiply(rot, this.rotMat);
+      this.physicsRot = mat3Multiply(rot, this.physicsRot);
     }
 
     // 优化后的单一摩擦力模型
     // 1. 基础阻力
-    this.vel.mul(0.992); 
+    this.physicsVel.mul(Math.pow(0.992, dt)); 
 
     // 2. 线性减速（模拟真实滚动摩擦直到完全静止）
     if (speed > 0) {
-        const linearDecel = 0.005; 
+        const linearDecel = 0.005 * dt; 
         const drop = Math.min(speed, linearDecel);
         const ratio = (speed - drop) / speed;
-        this.vel.mul(ratio);
+        this.physicsVel.mul(ratio);
     }
 
     // 3. 静止阈值处理
-    if (this.vel.length() < VELOCITY_THRESHOLD) {
-        this.vel = new Vec2(0, 0);
+    if (this.physicsVel.length() < VELOCITY_THRESHOLD) {
+        this.physicsVel.x = 0;
+        this.physicsVel.y = 0;
     }
+  }
+
+  /**
+   * 让渲染层状态平滑追赶物理层状态。
+   * @param {number} [smoothFactor=0.25] - 平滑追赶系数。
+   */
+  updateRender(smoothFactor = 0.25) {
+    if (this.pocketed) {
+      this.renderPos.x = this.physicsPos.x;
+      this.renderPos.y = this.physicsPos.y;
+      this.renderRot.set(this.physicsRot);
+      return;
+    }
+
+    this.renderPos.x += (this.physicsPos.x - this.renderPos.x) * smoothFactor;
+    this.renderPos.y += (this.physicsPos.y - this.renderPos.y) * smoothFactor;
+
+    // 旋转矩阵平滑插值
+    for (let i = 0; i < 9; i++) {
+      this.renderRot[i] += (this.physicsRot[i] - this.renderRot[i]) * smoothFactor;
+    }
+  }
+
+  /**
+   * 立即同步渲染层到物理层，用于停球后避免缓慢追赶。
+   */
+  syncPhysicsToRender() {
+    this.renderPos.x = this.physicsPos.x;
+    this.renderPos.y = this.physicsPos.y;
+    this.renderRot.set(this.physicsRot);
   }
 }

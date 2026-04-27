@@ -451,8 +451,8 @@ export class PixiRenderer {
                 this.shadowLayer.addChild(shadow);
                 this.shadowSprites.set(ball, shadow);
             }
-            shadow.x = ball.pos.x + 2;
-            shadow.y = ball.pos.y + 4;
+            shadow.x = ball.renderPos.x + 2;
+            shadow.y = ball.renderPos.y + 4;
 
             let sprite = this.ballSprites.get(ball);
             if (!sprite) {
@@ -462,7 +462,7 @@ export class PixiRenderer {
                     uSampler: this.textures[`label_${num}`],
                     uColor: ball.colorRgb,
                     uIsStripe: ball.type === 'stripe' ? 1.0 : 0.0,
-                    uRotation: ball.rotMat,
+                    uRotation: ball.renderRot,
                     uLightDir: [-0.42, -0.55, 0.72] // 调整光源至左上方
                 });
                 
@@ -473,9 +473,9 @@ export class PixiRenderer {
                 this.ballSprites.set(ball, sprite);
             }
             
-            sprite.x = ball.pos.x;
-            sprite.y = ball.pos.y;
-            sprite.shader.uniforms.uRotation = ball.rotMat;
+            sprite.x = ball.renderPos.x;
+            sprite.y = ball.renderPos.y;
+            sprite.shader.uniforms.uRotation = ball.renderRot;
         });
 
         for (const [ball, sprite] of this.ballSprites.entries()) {
@@ -514,7 +514,7 @@ export class PixiRenderer {
             const flashRatio = game.releaseFlash / RELEASE_FLASH_DURATION;
             g.lineStyle(4 * flashRatio, 0xffecb3, flashRatio * 0.8);
             const radius = BALL_RADIUS + 10 + (1 - flashRatio) * 18;
-            g.drawCircle(game.cueBall.pos.x, game.cueBall.pos.y, radius);
+            g.drawCircle(game.cueBall.renderPos.x, game.cueBall.renderPos.y, radius);
         }
 
         // Ball placement guide
@@ -522,7 +522,7 @@ export class PixiRenderer {
             const isMyTurn = (game.currentPlayer === game.playerIndex);
             const color = game.cuePlacementValid ? (isMyTurn ? 0xffffff : 0x888888) : 0xef4444;
             const alpha = game.cuePlacementValid ? (isMyTurn ? 0.8 : 0.4) : 0.9;
-            this.drawDashedLineCircle(g, game.cueBall.pos.x, game.cueBall.pos.y, BALL_RADIUS + 8, color, alpha, 3, [10, 6]);
+            this.drawDashedLineCircle(g, game.cueBall.renderPos.x, game.cueBall.renderPos.y, BALL_RADIUS + 8, color, alpha, 3, [10, 6]);
         }
 
         if (!game.ballInHand && !game.isMoving() && !game.cueBall.pocketed && !game.isGameOver) {
@@ -587,8 +587,9 @@ export class PixiRenderer {
 
     drawAimAndCue(game) {
         const isMyTurn = (game.currentPlayer === game.playerIndex);
+        const cueRenderPos = game.cueBall.renderPos || game.cueBall.pos;
         if (isMyTurn && game.hasPointerInput && !game.isDragging) {
-            const hoverAim = game.cueBall.pos.clone().sub(game.mousePos);
+            const hoverAim = cueRenderPos.clone().sub(game.mousePos);
             if (hoverAim.length() > 4) game.aimAngle = Math.atan2(hoverAim.y, hoverAim.x);
         }
 
@@ -602,7 +603,7 @@ export class PixiRenderer {
             const guideAlpha = 0.28 + powerRatio * 0.45;
             const guideWidth = 1.5 + powerRatio * 2.5;
 
-            this.drawDashedLine(g, game.cueBall.pos.x, game.cueBall.pos.y, guide.hitPoint.x, guide.hitPoint.y, 0xffffff, guideAlpha, guideWidth, [8, 6]);
+            this.drawDashedLine(g, cueRenderPos.x, cueRenderPos.y, guide.hitPoint.x, guide.hitPoint.y, 0xffffff, guideAlpha, guideWidth, [8, 6]);
 
             g.lineStyle(0);
             g.beginFill(0xffffff, 0.28);
@@ -629,15 +630,17 @@ export class PixiRenderer {
 
     drawBallGuide(game, g, guide, direction) {
         const targetBall = guide.ball;
+        const targetPhysicsPos = targetBall.physicsPos || targetBall.pos;
+        const targetRenderPos = targetBall.renderPos || targetPhysicsPos;
         const targetDirection = guide.normal.clone().normalize();
-        const targetTravel = game.getProjectedTravel(targetBall.pos, targetDirection, 240);
-        const targetEnd = targetBall.pos.clone().add(targetDirection.clone().mul(targetTravel));
+        const targetTravel = game.getProjectedTravel(targetPhysicsPos, targetDirection, 240);
+        const targetEnd = targetRenderPos.clone().add(targetDirection.clone().mul(targetTravel));
         const incoming = direction.clone().normalize();
         const cueDot = incoming.dot(guide.normal);
         const cueDeflect = incoming.clone().sub(guide.normal.clone().mul(cueDot));
         const cueDeflectLength = cueDeflect.length();
 
-        this.drawDashedLine(g, targetBall.pos.x, targetBall.pos.y, targetEnd.x, targetEnd.y, 0xffdf80, 0.72, 2.5, [10, 5]);
+        this.drawDashedLine(g, targetRenderPos.x, targetRenderPos.y, targetEnd.x, targetEnd.y, 0xffdf80, 0.72, 2.5, [10, 5]);
 
         if (cueDeflectLength > 0.05) {
             const cueDirection = cueDeflect.clone().normalize();
@@ -652,11 +655,11 @@ export class PixiRenderer {
         g.endFill();
 
         g.lineStyle(3, 0xffffff, 0.85);
-        g.drawCircle(targetBall.pos.x, targetBall.pos.y, BALL_RADIUS + 5);
+        g.drawCircle(targetRenderPos.x, targetRenderPos.y, BALL_RADIUS + 5);
         
         g.lineStyle(0);
         g.beginFill(0xffdf80, 0.18);
-        g.drawCircle(targetBall.pos.x, targetBall.pos.y, BALL_RADIUS + 8);
+        g.drawCircle(targetRenderPos.x, targetRenderPos.y, BALL_RADIUS + 8);
         g.endFill();
     }
 
@@ -673,8 +676,8 @@ export class PixiRenderer {
         const buttLength = 74;
         const totalLength = tipLength + ferruleLength + shaftLength + wrapLength + buttLength;
 
-        cue.x = game.cueBall.pos.x;
-        cue.y = game.cueBall.pos.y;
+        cue.x = game.cueBall.renderPos.x;
+        cue.y = game.cueBall.renderPos.y;
         cue.rotation = angle + Math.PI;
 
         cue.beginFill(0x1d90bf);

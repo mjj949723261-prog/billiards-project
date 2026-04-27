@@ -5,6 +5,7 @@ import { resolveRoomEntry } from './src/network/session-entry.js'
 import { getRenderedCuePullDistance, getRenderedCuePowerRatio, shouldRenderAimGuides, resolveTableSurfaceSourceRect } from './src/render/table-renderer.js'
 import { applyStatusSync, createStatusSyncSnapshot } from './src/network/state-sync.js'
 import { Vec2 } from './src/math.js'
+import { Ball } from './src/entities/ball.js'
 import { applyLayoutMode, hasDebugAlwaysDrag, isPortraitLayout, resolveRequestedLayoutMode } from './src/layout/mode.js'
 
 test('GameClient can be imported without browser storage globals', async () => {
@@ -237,6 +238,121 @@ test('syncTimer pauses countdown without zeroing remaining time when server stop
     assert.equal(game.expireAt, 0)
     assert.equal(game.timerPaused, true)
     assert.equal(game.timeLeft, 18.6)
+  } finally {
+    globalThis.sessionStorage = originalSessionStorage
+  }
+})
+
+test('live movement snapshots are ignored to avoid remote tug-of-war during collisions', async () => {
+  const originalSessionStorage = globalThis.sessionStorage
+
+  globalThis.sessionStorage = {
+    getItem() { return null },
+    setItem() {},
+    removeItem() {},
+  }
+
+  const { BilliardsGame } = await import(`./src/game.js?case=ignore-live-motion-${Date.now()}`)
+
+  try {
+    const game = Object.create(BilliardsGame.prototype)
+    game.balls = [
+      { type: 'cue', label: 'cue', pos: new Vec2(10, 20), vel: new Vec2(2, 3), pocketed: false, rotMat: new Float32Array(9).fill(0) },
+    ]
+
+    game.applyGameStateSnapshot({
+      isLive: true,
+      balls: [{ type: 'cue', label: 'cue', x: 90, y: 120, vx: 0, vy: 0, pocketed: false, rot: new Array(9).fill(1) }],
+    })
+
+    assert.equal(game.balls[0].pos.x, 10)
+    assert.equal(game.balls[0].pos.y, 20)
+    assert.equal(game.balls[0].vel.x, 2)
+    assert.equal(game.balls[0].vel.y, 3)
+  } finally {
+    globalThis.sessionStorage = originalSessionStorage
+  }
+})
+
+test('ball-in-hand live sync still applies remote cue placement snapshots', async () => {
+  const originalSessionStorage = globalThis.sessionStorage
+
+  globalThis.sessionStorage = {
+    getItem() { return null },
+    setItem() {},
+    removeItem() {},
+  }
+
+  const { BilliardsGame } = await import(`./src/game.js?case=placement-live-sync-${Date.now()}`)
+
+  try {
+    const game = Object.create(BilliardsGame.prototype)
+    game.currentPlayer = 1
+    game.ballInHand = false
+    game.playerGroups = { 1: null, 2: null }
+    game.scores = { 1: 0, 2: 0 }
+    game.isBreakShot = true
+    game.showRemoteCue = true
+    game.shotActive = true
+    game.statusMessage = ''
+    game.statusUntil = 0
+    game.updateUI = () => { throw new Error('placement live sync should not trigger business UI update') }
+    game.balls = [
+      { type: 'cue', label: 'cue', pos: new Vec2(10, 20), vel: new Vec2(0, 0), pocketed: false, rotMat: new Float32Array(9).fill(0) },
+    ]
+
+    game.applyGameStateSnapshot({
+      isLive: true,
+      ballInHand: true,
+      balls: [{ type: 'cue', label: 'cue', x: 44, y: 66, vx: 0, vy: 0, pocketed: false, rot: new Array(9).fill(1) }],
+    })
+
+    assert.equal(game.balls[0].pos.x, 44)
+    assert.equal(game.balls[0].pos.y, 66)
+    assert.equal(game.showRemoteCue, true)
+    assert.equal(game.shotActive, true)
+  } finally {
+    globalThis.sessionStorage = originalSessionStorage
+  }
+})
+
+test('settled snapshots snap render state when deviation exceeds the soft reconciliation threshold', async () => {
+  const originalSessionStorage = globalThis.sessionStorage
+
+  globalThis.sessionStorage = {
+    getItem() { return null },
+    setItem() {},
+    removeItem() {},
+  }
+
+  const { BilliardsGame } = await import(`./src/game.js?case=settled-soft-sync-${Date.now()}`)
+
+  try {
+    const cueBall = new Ball(10, 20, '#ffffff', 'cue', 'cue')
+    cueBall.renderPos.x = -200
+    cueBall.renderPos.y = -120
+
+    const game = Object.create(BilliardsGame.prototype)
+    game.currentPlayer = 1
+    game.ballInHand = false
+    game.playerGroups = { 1: null, 2: null }
+    game.scores = { 1: 0, 2: 0 }
+    game.isBreakShot = true
+    game.showRemoteCue = true
+    game.shotActive = true
+    game.statusMessage = ''
+    game.statusUntil = 0
+    game.updateUI = () => {}
+    game.balls = [cueBall]
+
+    game.applyGameStateSnapshot({
+      balls: [{ type: 'cue', label: 'cue', x: 40, y: 60, vx: 0, vy: 0, pocketed: false, rot: Array.from(cueBall.physicsRot) }],
+    })
+
+    assert.equal(cueBall.physicsPos.x, 40)
+    assert.equal(cueBall.physicsPos.y, 60)
+    assert.equal(cueBall.renderPos.x, 40)
+    assert.equal(cueBall.renderPos.y, 60)
   } finally {
     globalThis.sessionStorage = originalSessionStorage
   }
@@ -1191,6 +1307,60 @@ test('game state snapshot accepts nested ballState.balls payloads from room sync
   assert.match(gameSource, /const rawBallState = snapshot\.ballState \|\| snapshot\.balls \|\| \(snapshot\.room && snapshot\.room\.ballState\);/)
   assert.match(gameSource, /const ballsToApply = Array\.isArray\(rawBallState\)\s*\?\s*rawBallState\s*:\s*rawBallState\?\.balls;/)
   assert.match(gameSource, /if \(!ballsToApply \|\| !Array\.isArray\(ballsToApply\)\) return;/)
+  assert.match(gameSource, /const isPlacementLiveSync = snapshot\.isLive === true && snapshot\.ballInHand === true;/)
+  assert.match(gameSource, /const isMotionLiveSync = snapshot\.isLive === true && !isPlacementLiveSync;/)
+  assert.match(gameSource, /if \(isMotionLiveSync && !snapshot\.forceBusinessUpdate\) return;/)
+  assert.doesNotMatch(gameSource, /const isServerSync = snapshot\.room !== undefined;/)
+})
+
+test('movement-period whole-table live sync sending is disabled while cue placement live sync stays enabled', () => {
+  const gameSource = fs.readFileSync(new URL('./src/game.js', import.meta.url), 'utf8')
+
+  assert.doesNotMatch(gameSource, /this\.isMoving\(\) && GameClient\.isMyTurn\)[\s\S]*GameClient\.sendSync\(\{ balls:/)
+  assert.match(gameSource, /this\.ballInHand && this\.placingCue[\s\S]*snap\.isLive = true; GameClient\.sendSync\(snap\);/)
+})
+
+test('game update smooths render state separately from physics state', () => {
+  const gameSource = fs.readFileSync(new URL('./src/game.js', import.meta.url), 'utf8')
+  const ballSource = fs.readFileSync(new URL('./src/entities/ball.js', import.meta.url), 'utf8')
+  const pixiSource = fs.readFileSync(new URL('./src/render/pixi-renderer.js', import.meta.url), 'utf8')
+  const tableRendererSource = fs.readFileSync(new URL('./src/render/table-renderer.js', import.meta.url), 'utf8')
+
+  assert.match(gameSource, /this\.balls\.forEach\(ball => \{\s*if \(typeof ball\.updateRender === 'function'\) \{\s*ball\.updateRender\(0\.25\);/s)
+  assert.match(ballSource, /this\.physicsPos = new Vec2\(x, y\);/)
+  assert.match(ballSource, /this\.renderPos = this\.physicsPos\.clone\(\);/)
+  assert.match(ballSource, /updateRender\(smoothFactor = 0\.25\)/)
+  assert.match(pixiSource, /sprite\.x = ball\.renderPos\.x;/)
+  assert.match(pixiSource, /sprite\.shader\.uniforms\.uRotation = ball\.renderRot;/)
+  assert.match(tableRendererSource, /ctx\.translate\(game\.cueBall\.renderPos\.x, game\.cueBall\.renderPos\.y\)/)
+})
+
+test('physics loop uses a fixed 120Hz timestep with capped substeps and four collision iterations', () => {
+  const physicsSource = fs.readFileSync(new URL('./src/core/physics.js', import.meta.url), 'utf8')
+
+  assert.match(physicsSource, /const FIXED_TIMESTEP_MS = 1000 \/ 120/)
+  assert.match(physicsSource, /const MAX_SUBSTEPS = 5/)
+  assert.match(physicsSource, /game\.physicsAccumulatorMs \+= Math\.min\(frameMs, FIXED_TIMESTEP_MS \* MAX_SUBSTEPS\)/)
+  assert.match(physicsSource, /while \(game\.physicsAccumulatorMs >= FIXED_TIMESTEP_MS && substeps < MAX_SUBSTEPS\)/)
+  assert.match(physicsSource, /const COLLISION_ITERATIONS = 4/)
+  assert.match(physicsSource, /for \(let iteration = 0; iteration < COLLISION_ITERATIONS; iteration\+\+\)/)
+})
+
+test('settled snapshot reconciliation uses a soft threshold before snapping render state', () => {
+  const gameSource = fs.readFileSync(new URL('./src/game.js', import.meta.url), 'utf8')
+
+  assert.match(gameSource, /const deviation = Math\.hypot\(physicsPos\.x - renderPos\.x, physicsPos\.y - renderPos\.y\)/)
+  assert.match(gameSource, /const shouldSnapRender = isPlacementLiveSync \|\| wasPocketed !== ball\.pocketed \|\| deviation > BALL_RADIUS \* 2/)
+  assert.match(gameSource, /if \(shouldSnapRender && typeof ball\.syncPhysicsToRender === 'function'\)/)
+})
+
+test('room service periodic sync excludes room ballState and only persists settled snapshots', () => {
+  const source = fs.readFileSync(new URL('../billiards-server/src/main/java/com/billiards/game/service/RoomService.java', import.meta.url), 'utf8')
+
+  assert.match(source, /Map<String, Object> roomSync = new HashMap<>\(\);/)
+  assert.match(source, /roomSync\.put\("currentTurnPlayerId", room\.getCurrentTurnPlayerId\(\)\);/)
+  assert.match(source, /private void startPeriodicSync\(String roomId\) \{[\s\S]*"room", roomSync,/)
+  assert.match(source, /if \(!isLive\) \{\s*room\.setBallState\(content\);\s*\}/s)
 })
 
 test('gameplay room layout splits tools top and players on short rails without a bottom control bar', () => {

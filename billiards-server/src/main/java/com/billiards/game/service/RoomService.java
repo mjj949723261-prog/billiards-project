@@ -172,12 +172,27 @@ public class RoomService {
     private void startPeriodicSync(String roomId) {
         turnTimerService.startPeriodicSync(roomId, SYNC_INTERVAL_MS, () -> {
             roomRepository.findById(roomId).ifPresent(room -> {
+                Map<String, Object> roomSync = new HashMap<>();
+                roomSync.put("roomId", room.getRoomId());
+                roomSync.put("playerIds", room.getPlayerIds());
+                roomSync.put("playerNames", room.getPlayerNames());
+                roomSync.put("currentTurnPlayerId", room.getCurrentTurnPlayerId());
+                roomSync.put("status", room.getStatus());
+                roomSync.put("turnStartTime", room.getTurnStartTime());
+                roomSync.put("expireAt", room.getExpireAt());
+                roomSync.put("ballInHand", room.isBallInHand());
+                roomSync.put("ballInHandZone", room.getBallInHandZone());
+                roomSync.put("player1Score", room.getPlayer1Score());
+                roomSync.put("player2Score", room.getPlayer2Score());
+                roomSync.put("player1Group", room.getPlayer1Group());
+                roomSync.put("player2Group", room.getPlayer2Group());
+
                 messagingTemplate.convertAndSend("/topic/room/" + roomId, GameMessage.builder()
                         .type(GameMessage.MessageType.SYNC_STATE)
                         .roomId(roomId)
                         .senderId("SYSTEM")
                         .content(Map.of(
-                            "room", room,
+                            "room", roomSync,
                             "expireAt", room.getExpireAt(), 
                             "serverTime", System.currentTimeMillis()
                         ))
@@ -229,7 +244,17 @@ public class RoomService {
                 return;
             }
 
-            room.setBallState(content);
+            boolean isLive = false;
+            if (content instanceof Map<?, ?> contentMap) {
+                Object isLiveObj = contentMap.get("isLive");
+                if (isLiveObj instanceof Boolean) {
+                    isLive = (Boolean) isLiveObj;
+                }
+            }
+
+            if (!isLive) {
+                room.setBallState(content);
+            }
             
             if (content instanceof Map<?, ?> contentMap) {
                 try {
@@ -275,14 +300,6 @@ public class RoomService {
             }
 
             roomRepository.save(room);
-            
-            boolean isLive = false;
-            if (content instanceof Map<?, ?> contentMap) {
-                Object isLiveObj = contentMap.get("isLive");
-                if (isLiveObj instanceof Boolean) {
-                    isLive = (Boolean) isLiveObj;
-                }
-            }
 
             if (!isLive && room.getStatus() == BilliardsRoom.GameStatus.PLAYING) {
                 resetTurnTimer(roomId);

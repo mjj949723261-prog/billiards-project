@@ -267,7 +267,7 @@ export function drawGame(game) {
   game.balls.forEach(ball => {
     if (ball.pocketed) return;
     ctx.save()
-    ctx.translate(ball.pos.x, ball.pos.y)
+    ctx.translate(ball.renderPos.x, ball.renderPos.y)
     ctx.beginPath()
     ctx.arc(2, 4, BALL_RADIUS, 0, Math.PI * 2) // Offset shadow slightly down-right
     ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'
@@ -335,7 +335,7 @@ export function drawGame(game) {
     ctx.strokeStyle = `rgba(255, 236, 179, ${flashRatio * 0.8})`
     ctx.lineWidth = 4 * flashRatio
     ctx.beginPath()
-    ctx.arc(game.cueBall.pos.x, game.cueBall.pos.y, BALL_RADIUS + 10 + (1 - flashRatio) * 18, 0, Math.PI * 2)
+    ctx.arc(game.cueBall.renderPos.x, game.cueBall.renderPos.y, BALL_RADIUS + 10 + (1 - flashRatio) * 18, 0, Math.PI * 2)
     ctx.stroke()
   }
 
@@ -345,7 +345,7 @@ export function drawGame(game) {
     ctx.lineWidth = 3
     ctx.setLineDash([10, 6])
     ctx.beginPath()
-    ctx.arc(game.cueBall.pos.x, game.cueBall.pos.y, BALL_RADIUS + 8, 0, Math.PI * 2)
+    ctx.arc(game.cueBall.renderPos.x, game.cueBall.renderPos.y, BALL_RADIUS + 8, 0, Math.PI * 2)
     ctx.stroke()
     ctx.setLineDash([])
   }
@@ -358,10 +358,11 @@ export function drawGame(game) {
 }
 function drawAimAndCue(game, ctx) {
   const isMyTurn = shouldRenderAimGuides(game)
+  const cueRenderPos = game.cueBall.renderPos || game.cueBall.pos
 
   // 只有轮到我时，才根据我的鼠标位置更新本地瞄准角度
   if (isMyTurn && game.hasPointerInput && !game.isDragging) {
-    const hoverAim = game.cueBall.pos.clone().sub(game.mousePos)
+    const hoverAim = cueRenderPos.clone().sub(game.mousePos)
     if (hoverAim.length() > 4) game.aimAngle = Math.atan2(hoverAim.y, hoverAim.x)
   }
 
@@ -377,7 +378,7 @@ function drawAimAndCue(game, ctx) {
     ctx.lineWidth = guideWidth
     ctx.setLineDash([8, 6])
     ctx.beginPath()
-    ctx.moveTo(game.cueBall.pos.x, game.cueBall.pos.y)
+    ctx.moveTo(cueRenderPos.x, cueRenderPos.y)
     ctx.lineTo(guide.hitPoint.x, guide.hitPoint.y)
     ctx.stroke()
     ctx.setLineDash([])
@@ -448,9 +449,11 @@ function drawPowerBar(game, ctx, powerRatio) {
 
 function drawBallGuide(game, ctx, guide, direction) {
   const targetBall = guide.ball
+  const targetPhysicsPos = targetBall.physicsPos || targetBall.pos
+  const targetRenderPos = targetBall.renderPos || targetPhysicsPos
   const targetDirection = guide.normal.clone().normalize()
-  const targetTravel = game.getProjectedTravel(targetBall.pos, targetDirection, 240)
-  const targetEnd = targetBall.pos.clone().add(targetDirection.clone().mul(targetTravel))
+  const targetTravel = game.getProjectedTravel(targetPhysicsPos, targetDirection, 240)
+  const targetEnd = targetRenderPos.clone().add(targetDirection.clone().mul(targetTravel))
   const incoming = direction.clone().normalize()
   const cueDot = incoming.dot(guide.normal)
   const cueDeflect = incoming.clone().sub(guide.normal.clone().mul(cueDot))
@@ -460,7 +463,7 @@ function drawBallGuide(game, ctx, guide, direction) {
   ctx.lineWidth = 2.5
   ctx.setLineDash([10, 5])
   ctx.beginPath()
-  ctx.moveTo(targetBall.pos.x, targetBall.pos.y)
+  ctx.moveTo(targetRenderPos.x, targetRenderPos.y)
   ctx.lineTo(targetEnd.x, targetEnd.y)
   ctx.stroke()
   ctx.setLineDash([])
@@ -487,18 +490,18 @@ function drawBallGuide(game, ctx, guide, direction) {
   ctx.strokeStyle = 'rgba(255,255,255,0.85)'
   ctx.lineWidth = 3
   ctx.beginPath()
-  ctx.arc(targetBall.pos.x, targetBall.pos.y, BALL_RADIUS + 5, 0, Math.PI * 2)
+  ctx.arc(targetRenderPos.x, targetRenderPos.y, BALL_RADIUS + 5, 0, Math.PI * 2)
   ctx.stroke()
 
   ctx.fillStyle = 'rgba(255, 223, 128, 0.18)'
   ctx.beginPath()
-  ctx.arc(targetBall.pos.x, targetBall.pos.y, BALL_RADIUS + 8, 0, Math.PI * 2)
+  ctx.arc(targetRenderPos.x, targetRenderPos.y, BALL_RADIUS + 8, 0, Math.PI * 2)
   ctx.fill()
 }
 
 function drawCueStick(game, ctx, angle, powerRatio) {
   ctx.save()
-  ctx.translate(game.cueBall.pos.x, game.cueBall.pos.y)
+  ctx.translate(game.cueBall.renderPos.x, game.cueBall.renderPos.y)
   ctx.rotate(angle + Math.PI)
   const pull = getRenderedCuePullDistance(game)
   const cueBase = BALL_RADIUS + 2 + pull
