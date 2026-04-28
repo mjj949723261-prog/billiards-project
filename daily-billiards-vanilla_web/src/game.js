@@ -31,6 +31,7 @@ import { getPocketVisualCenters } from './render/table-renderer.js'
 import { updateGameUi, updateTimerUi } from './ui/dom-ui.js'
 import { GameClient } from './network/game-client.js'
 import { applyStatusSync, createStatusSyncSnapshot } from './network/state-sync.js'
+import { buildSettledSnapshotPayload, createShotEndReport, snapshotStateFromRoomPayload } from './network/shot-state.js'
 
 /**
  * 管理所有台球逻辑和状态的主游戏类。
@@ -112,6 +113,22 @@ export class BilliardsGame {
     this.shotActive = false
     /** @type {Object|null} 记录当前击球的结果状态，用于评估规则。 */
     this.shotState = null
+    /** @type {number} 当前服务端回合序号。 */
+    this.turnId = 1
+    /** @type {number} 当前稳定桌面版本。 */
+    this.stateVersion = 1
+    /** @type {string|null} 当前回合的一次性出杆令牌。 */
+    this.shotToken = null
+    /** @type {string} 当前房间阶段。 */
+    this.roomPhase = 'WAITING'
+    /** @type {string} 最近一次稳定桌面的归一化哈希。 */
+    this.stateHash = ''
+    /** @type {Object|null} 最近一次稳定桌面快照。 */
+    this.lastSettledSnapshot = null
+    /** @type {Object|null} 本地乐观出杆的待确认输入。 */
+    this.pendingShotRequest = null
+    /** @type {boolean} 当前是否正在等待服务端结算本杆。 */
+    this.awaitingShotResult = false
 
     /** @type {Vec2[]} 球桌六个球袋的中心坐标位置。 */
     this.pockets = getPocketVisualCenters()
@@ -212,6 +229,7 @@ export class BilliardsGame {
       }
     }
     this.resetShotState()
+    this.commitSettledSnapshot()
     this.updateUI()
   }
 
@@ -288,6 +306,10 @@ export class BilliardsGame {
     this.beginShot()
   }
 
+  executeAcceptedShotInput({ aimAngle, powerRatio }) {
+    this.executeRemoteShoot(aimAngle, powerRatio)
+  }
+
   /**
    * 创建当前游戏状态的快照以便进行网络同步。
    * @returns {Object} 游戏状态快照对象。
@@ -300,7 +322,7 @@ export class BilliardsGame {
         const rot = b.physicsRot || b.rotMat || new Float32Array(9)
         return { type: b.type, label: b.label, x: pos.x, y: pos.y, vx: vel.x, vy: vel.y, rot: Array.from(rot), pocketed: b.pocketed }
       }),
-      currentPlayer: this.currentPlayer, timeLeft: this.timeLeft, ballInHand: this.ballInHand, ballInHandZone: this.ballInHandZone, playerGroups: { ...this.playerGroups }, scores: { ...this.scores }, isBreakShot: this.isBreakShot, ...createStatusSyncSnapshot(this),
+      currentPlayer: this.currentPlayer, timeLeft: this.timeLeft, ballInHand: this.ballInHand, ballInHandZone: this.ballInHandZone, playerGroups: { ...this.playerGroups }, scores: { ...this.scores }, isBreakShot: this.isBreakShot, turnId: this.turnId, stateVersion: this.stateVersion, stateHash: this.stateHash, roomPhase: this.roomPhase, shotToken: this.shotToken, ...createStatusSyncSnapshot(this),
     }
   }
 
@@ -378,12 +400,21 @@ export class BilliardsGame {
 
     if (isPlacementLiveSync && !snapshot.forceBusinessUpdate) return;
     const room = snapshot.room || snapshot;
+    const protocolState = snapshotStateFromRoomPayload(room)
+    this.turnId = protocolState.turnId
+    this.stateVersion = protocolState.stateVersion
+    this.shotToken = protocolState.shotToken
+    this.roomPhase = protocolState.roomPhase
+    this.stateHash = protocolState.stateHash || this.stateHash
     if (room.currentPlayer !== undefined) this.currentPlayer = room.currentPlayer
     if (room.ballInHand !== undefined) this.ballInHand = room.ballInHand
     this.playerGroups = room.playerGroups || this.playerGroups;
     this.scores = room.scores || this.scores;
     this.isBreakShot = room.isBreakShot !== undefined ? room.isBreakShot : this.isBreakShot;
-    this.showRemoteCue = false; this.shotActive = false;
+    this.showRemoteCue = false; this.shotActive = false; this.awaitingShotResult = false;
+    if (!isPlacementLiveSync) {
+      this.commitSettledSnapshot()
+    }
     applyStatusSync(this, room); this.updateUI();
   }
 
@@ -398,6 +429,88 @@ export class BilliardsGame {
    * 标记击球开始，锁定瞄准并启动物理模拟。
    */
   beginShot() { this.shotActive = true; this.resetShotState(); }
+
+  beginLocalAuthoritativeShot(shotInput) {
+    this.pendingShotRequest = shotInput
+    this.roomPhase = 'RESOLVING'
+    this.awaitingShotResult = true
+    this.executeAcceptedShotInput(shotInput)
+  }
+
+  commitSettledSnapshot() {
+    const snapshot = buildSettledSnapshotPayload(this)
+    this.lastSettledSnapshot = snapshot
+    this.stateHash = snapshot.stateHash
+    return snapshot
+  }
+
+  rollbackToSettledSnapshot(reason = '出杆未被服务器接受') {
+    if (!this.lastSettledSnapshot?.balls) return
+    this.applyGameStateSnapshot({
+      balls: this.lastSettledSnapshot.balls,
+      forceBusinessUpdate: true,
+      turnId: this.turnId,
+      stateVersion: this.stateVersion,
+      stateHash: this.lastSettledSnapshot.stateHash,
+      roomPhase: 'PLAYING',
+      shotToken: this.shotToken,
+      currentPlayer: this.currentPlayer,
+      ballInHand: this.ballInHand,
+      ballInHandZone: this.ballInHandZone,
+      playerGroups: { ...this.playerGroups },
+      scores: { ...this.scores },
+      isBreakShot: this.isBreakShot,
+    })
+    this.pendingShotRequest = null
+    this.awaitingShotResult = false
+    this.roomPhase = 'PLAYING'
+    this.setStatusMessage(reason, 2000)
+  }
+
+  applyShotResult(result) {
+    if (!result) return
+    if (result.finalBallState) {
+      this.applyGameStateSnapshot({
+        balls: result.finalBallState,
+        turnId: result.turnId ?? this.turnId,
+        stateVersion: result.stateVersion ?? this.stateVersion,
+        stateHash: result.stateHash || this.stateHash,
+        roomPhase: result.roomPhase || 'PLAYING',
+        shotToken: result.nextShotToken || result.shotToken || this.shotToken,
+        currentPlayer: result.currentPlayer ?? this.currentPlayer,
+        ballInHand: result.ballInHand ?? this.ballInHand,
+        ballInHandZone: result.ballInHandZone || this.ballInHandZone,
+        playerGroups: result.playerGroups || this.playerGroups,
+        scores: result.scores || this.scores,
+        isBreakShot: result.isBreakShot ?? false,
+        forceBusinessUpdate: true,
+        statusMessage: result.statusMessage || '',
+        statusRemainingMs: result.statusRemainingMs || 0,
+      })
+    }
+    if (result.currentPlayer !== undefined) this.currentPlayer = result.currentPlayer
+    if (result.ballInHand !== undefined) this.ballInHand = result.ballInHand
+    if (result.ballInHandZone) this.ballInHandZone = result.ballInHandZone
+    if (result.playerGroups) this.playerGroups = result.playerGroups
+    if (result.scores) this.scores = result.scores
+    this.isBreakShot = result.isBreakShot !== undefined ? result.isBreakShot : false
+    this.turnId = result.nextTurnId ?? result.turnId ?? this.turnId
+    this.stateVersion = result.stateVersion ?? this.stateVersion
+    this.shotToken = result.nextShotToken || this.shotToken
+    this.roomPhase = result.roomPhase || 'PLAYING'
+    this.pendingShotRequest = null
+    this.awaitingShotResult = false
+    this.shotActive = false
+    this.showRemoteCue = false
+    this.pullDistance = 0
+    this.isDragging = false
+    this.commitSettledSnapshot()
+    this.updateUI()
+  }
+
+  buildShotEndReport(senderRole = 'shooter') {
+    return createShotEndReport(this, senderRole)
+  }
 
   /**
    * 计算指定玩家在球桌上剩余的球数。
@@ -488,7 +601,23 @@ export class BilliardsGame {
   /** @ignore 规则模块代理方法 */
   switchTurn(wb = false, zone = 'table') { switchTurn(this, wb, zone); }
   /** @ignore 规则模块代理方法 */
-  evaluateShot() { const wasMyTurn = GameClient.isMyTurn; evaluateShot(this); if (!this.isMoving() && !this.shotActive && wasMyTurn) GameClient.sendSync(this.getGameStateSnapshot()); }
+  evaluateShot() {
+    const wasMyTurn = GameClient.isMyTurn
+    if (GameClient.usesLightweightAuthority()) {
+      if (!this.shotActive || this.isGameOver) return
+      this.shotActive = false
+      this.awaitingShotResult = true
+      this.roomPhase = 'RESOLVING'
+      const senderRole = wasMyTurn ? 'shooter' : 'witness'
+      GameClient.sendShotEndReport(this.buildShotEndReport(senderRole))
+      if (wasMyTurn) {
+        this.setStatusMessage('本杆结算中', 1800)
+      }
+      return
+    }
+    evaluateShot(this)
+    if (!this.isMoving() && !this.shotActive && wasMyTurn) GameClient.sendSync(this.getGameStateSnapshot())
+  }
 
   /**
    * 每帧调用的主逻辑更新。处理物理、计时器和同步逻辑。
@@ -525,7 +654,7 @@ export class BilliardsGame {
         if (++this.placementSyncCounter % 2 === 0) { const snap = this.getGameStateSnapshot(); snap.isLive = true; GameClient.sendSync(snap); }
     } else this.placementSyncCounter = 0;
 
-    if (GameClient.isMyTurn && !this.ballInHand && !this.isMoving() && (this.isDragging || this.hasPointerInput)) {
+    if (GameClient.isMyTurn && this.roomPhase === 'PLAYING' && !this.ballInHand && !this.isMoving() && (this.isDragging || this.hasPointerInput)) {
         if (++this.aimSyncCounter % 2 === 0) GameClient.sendAim({ aimAngle: this.aimAngle, pullDistance: this.isDragging ? this.pullDistance : 0 });
         this.updateUI();
     } else if (this.showRemoteCue) this.updateUI();

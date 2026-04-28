@@ -1,6 +1,7 @@
 package com.billiards.game.model;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +38,30 @@ public class BilliardsRoom {
     
     /** 球的物理状态数据 (存储所有球的坐标、速度、是否入袋等，通常为 Map 结构) */
     private Object ballState;
+
+    /** 最近一次稳定桌面快照，用于断线恢复和冲突回滚。 */
+    private Object lastSettledBallState;
+
+    /** 当前回合编号。 */
+    private long turnId = 1L;
+
+    /** 当前稳定桌面版本号。 */
+    private long stateVersion = 1L;
+
+    /** 当前稳定桌面的归一化哈希。 */
+    private String stateHash = "INITIAL";
+
+    /** 当前回合的一次性出杆令牌。 */
+    private String shotToken = UUID.randomUUID().toString();
+
+    /** 当前是否仍是开球杆。 */
+    private boolean breakShot = true;
+
+    /** 当前待结算出杆输入。 */
+    private Object pendingShotInput;
+
+    /** 当前待结算的客户端结果上报。 */
+    private Map<String, Object> pendingShotReports = new HashMap<>();
     
     /** 是否处于“自由球”状态 (母球可以被玩家手动移动) */
     private boolean ballInHand = false;
@@ -102,11 +127,19 @@ public class BilliardsRoom {
         // 默认让第一名玩家先开球
         this.currentTurnPlayerId = playerIds.get(0); 
         this.turnStartTime = System.currentTimeMillis();
+        this.turnId = 1L;
+        this.stateVersion = 1L;
+        this.stateHash = "INITIAL";
+        this.shotToken = UUID.randomUUID().toString();
+        this.breakShot = true;
         this.player1Score = 0;
         this.player2Score = 0;
         this.player1Group = "OPEN";
         this.player2Group = "OPEN";
         this.ballState = null;
+        this.lastSettledBallState = null;
+        this.pendingShotInput = null;
+        this.pendingShotReports.clear();
         this.rematchReadyPlayers.clear();
     }
 
@@ -139,6 +172,30 @@ public class BilliardsRoom {
     public Object getBallState() { return ballState; }
     public void setBallState(Object ballState) { this.ballState = ballState; }
 
+    public Object getLastSettledBallState() { return lastSettledBallState; }
+    public void setLastSettledBallState(Object lastSettledBallState) { this.lastSettledBallState = lastSettledBallState; }
+
+    public long getTurnId() { return turnId; }
+    public void setTurnId(long turnId) { this.turnId = turnId; }
+
+    public long getStateVersion() { return stateVersion; }
+    public void setStateVersion(long stateVersion) { this.stateVersion = stateVersion; }
+
+    public String getStateHash() { return stateHash; }
+    public void setStateHash(String stateHash) { this.stateHash = stateHash; }
+
+    public String getShotToken() { return shotToken; }
+    public void setShotToken(String shotToken) { this.shotToken = shotToken; }
+
+    public boolean isBreakShot() { return breakShot; }
+    public void setBreakShot(boolean breakShot) { this.breakShot = breakShot; }
+
+    public Object getPendingShotInput() { return pendingShotInput; }
+    public void setPendingShotInput(Object pendingShotInput) { this.pendingShotInput = pendingShotInput; }
+
+    public Map<String, Object> getPendingShotReports() { return pendingShotReports; }
+    public void setPendingShotReports(Map<String, Object> pendingShotReports) { this.pendingShotReports = pendingShotReports; }
+
     public boolean isBallInHand() { return ballInHand; }
     public void setBallInHand(boolean ballInHand) { this.ballInHand = ballInHand; }
 
@@ -168,6 +225,10 @@ public class BilliardsRoom {
         WAITING, 
         /** 对局正在进行中 */
         PLAYING, 
+        /** 一杆已被接受，本地正在运动，等待结果裁决。 */
+        RESOLVING,
+        /** 因断线或争议暂时暂停。 */
+        PAUSED,
         /** 对局已结算完成 */
         FINISHED
     }

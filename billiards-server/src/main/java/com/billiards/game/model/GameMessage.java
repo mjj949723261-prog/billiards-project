@@ -49,6 +49,22 @@ public class GameMessage {
     public void setContent(Object content) { this.content = content; }
 
     public enum MessageType {
-        JOIN, GAME_START, SHOOT, AIM, SYNC_STATE, TURN_TIMEOUT, CHAT, ERROR, LEAVE, REMATCH, PLAYER_LEFT, PLAYER_RECONNECTED
+        JOIN,
+        GAME_START,
+        SHOOT,
+        AIM,
+        SYNC_STATE,
+        TURN_TIMEOUT,
+        CHAT,
+        ERROR,
+        LEAVE,
+        REMATCH,
+        PLAYER_LEFT,
+        PLAYER_RECONNECTED,
+        SHOT_START_REQUEST,
+        SHOT_START_ACCEPTED,
+        SHOT_END_REPORT,
+        SHOT_RESULT,
+        ROOM_SNAPSHOT
     }
 }

@@ -132,8 +132,10 @@ window.handleGameStart = (room) => {
     const urlParams = new URLSearchParams(window.location.search);
     const hideTopView = urlParams.get('hideTopView') === '1';
     
-    // 核心保护：只要不是 PLAYING，绝对不许隐藏遮罩
-    if (status !== 'PLAYING' && !hideTopView) {
+    const isActiveRoomStatus = status === 'PLAYING' || status === 'RESOLVING' || status === 'PAUSED'
+
+    // 核心保护：只有对局相关状态才允许进入游戏画面
+    if (!isActiveRoomStatus && !hideTopView) {
         console.log('[UI] Room is not in PLAYING state. Keeping matchmaking panel visible.');
         
     showOverlay();
@@ -157,7 +159,7 @@ window.handleGameStart = (room) => {
 
     // --- 核心修复：只有在 PLAYING 时才初始化游戏，防止 WAITING 时 Canvas 背景露出 ---
     const roomData = room.room || (room.content && room.content.room) || room;
-    const isPlaying = status === 'PLAYING';
+    const isPlaying = isActiveRoomStatus;
     const msgType = room._msgType; // 之前在 GameClient.js 中注入的标记
     const isFreshGameStart = msgType === 'GAME_START';
     const hasRemoteBallState = !!(roomData.ballState);
@@ -198,6 +200,11 @@ window.handleGameStart = (room) => {
     window.game.playerIndex = GameClient.playerIndex;
     window.game.currentPlayer = (roomData.currentTurnPlayerId === p1Id) ? 1 : 2;
     GameClient.isMyTurn = (roomData.currentTurnPlayerId === GameClient.playerId);
+    window.game.roomPhase = roomData.status || status || window.game.roomPhase
+    window.game.turnId = roomData.turnId ?? window.game.turnId
+    window.game.stateVersion = roomData.stateVersion ?? window.game.stateVersion
+    window.game.shotToken = roomData.shotToken ?? window.game.shotToken
+    window.game.stateHash = roomData.stateHash || window.game.stateHash
     
     // 恢复状态 (如果是本地刷新加载)
     if (isPlaying && (isLocalNewSession || isFreshGameStart)) {
@@ -219,7 +226,8 @@ window.handleGameStart = (room) => {
         }
     }
 
-    window.game.shotActive = false;
+    window.game.shotActive = status === 'RESOLVING';
+    window.game.awaitingShotResult = status === 'RESOLVING';
     window.game.showRemoteCue = false;
     window.game.pullDistance = 0;
     window.game.isDragging = false;
@@ -232,7 +240,11 @@ window.handleGameStart = (room) => {
     let entryMsg = "";
     
     if (isPlaying) {
-        if (msgType === 'GAME_START') {
+        if (status === 'PAUSED') {
+            entryMsg = '对局已暂停，等待玩家恢复'
+        } else if (status === 'RESOLVING') {
+            entryMsg = '本杆结算中'
+        } else if (msgType === 'GAME_START') {
             // 场景 A: 人数凑齐，系统广播对局开始
             // 只有当前页面还没提示过“比赛开始”时才显示（防止广播和个人消息冲突）
             if (!window._matchStartedMsgShown) {
@@ -282,6 +294,75 @@ window.handleRemoteShoot = (data) => {
     }
 };
 
+window.handleShotStartAccepted = (payload, senderId) => {
+    if (!window.game) return
+    const shot = payload.shot || payload
+    const room = payload.room || {}
+    window.game.roomPhase = room.status || 'RESOLVING'
+    window.game.turnId = shot.turnId ?? window.game.turnId
+    window.game.stateVersion = shot.stateVersion ?? window.game.stateVersion
+    window.game.shotToken = shot.shotToken ?? window.game.shotToken
+    window.game.isTurnLocked = true
+
+    const isOwnOptimisticShot = senderId === GameClient.playerId
+    if (!isOwnOptimisticShot) {
+        window.game.executeAcceptedShotInput(shot)
+    } else if (window.game.pendingShotRequest) {
+        window.game.pendingShotRequest = null
+    }
+    window.game.updateUI()
+}
+
+window.handleShotResult = (payload) => {
+    if (!window.game) return
+    const room = payload.room || {}
+    const playerIds = room.playerIds || []
+    if (playerIds.length > 0) {
+        window.game.playerIdByNumber = {
+            1: playerIds[0] || null,
+            2: playerIds[1] || null,
+        }
+    }
+    GameClient.playerNames = room.playerNames || GameClient.playerNames || {}
+    GameClient.isMyTurn = room.currentTurnPlayerId === GameClient.playerId
+    const currentPlayer = playerIds.indexOf(room.currentTurnPlayerId) + 1
+    window.game.applyShotResult({
+        turnId: payload.turnId,
+        nextTurnId: payload.nextTurnId,
+        stateVersion: payload.stateVersion,
+        nextShotToken: payload.nextShotToken,
+        stateHash: payload.stateHash,
+        roomPhase: room.status || 'PLAYING',
+        currentPlayer: currentPlayer > 0 ? currentPlayer : window.game.currentPlayer,
+        ballInHand: payload.ballInHand,
+        ballInHandZone: payload.ballInHandZone,
+        playerGroups: payload.playerGroups,
+        scores: payload.scores,
+        finalBallState: payload.finalBallState,
+        isBreakShot: payload.isBreakShot,
+        statusMessage: payload.statusMessage,
+        statusRemainingMs: payload.statusRemainingMs,
+      })
+    const expireAt = payload.expireAt || room.expireAt
+    const serverTime = payload.serverTime || Date.now()
+    if (expireAt) {
+        window.game.syncTimer(room.turnStartTime || 0, expireAt, serverTime)
+    }
+    window.game.isTurnLocked = false
+}
+
+window.handleRoomSnapshot = (payload) => {
+    if (!window.game) {
+        window.game = bootstrapGame();
+    }
+    const room = payload.room || payload
+    window.handleGameStart({ ...room, room, status: room.status || payload.status, _msgType: 'ROOM_SNAPSHOT' })
+    if (room.ballState) {
+        const restoredSnapshot = Array.isArray(room.ballState) ? { balls: room.ballState } : room.ballState
+        window.game.applyGameStateSnapshot({ ...payload, ...restoredSnapshot, forceBusinessUpdate: true })
+    }
+}
+
 /**
  * 处理远程状态同步的全局回调。
  * 将状态快照应用到本地游戏实例。
@@ -320,6 +401,10 @@ window.handleTurnSwitch = (data) => {
         window.game.playerIndex = GameClient.playerIndex;
         window.game.currentPlayer = (roomData.currentTurnPlayerId === p1Id) ? 1 : 2;
         GameClient.isMyTurn = (roomData.currentTurnPlayerId === GameClient.playerId);
+        window.game.roomPhase = roomData.status || 'PLAYING'
+        window.game.turnId = roomData.turnId ?? window.game.turnId
+        window.game.stateVersion = roomData.stateVersion ?? window.game.stateVersion
+        window.game.shotToken = roomData.shotToken ?? window.game.shotToken
         
         // 关键修复：重置所有锁定标志，确保新玩家可以操作
         window.game.shotActive = false;

@@ -14,6 +14,7 @@ import {
 import { Vec2 } from '../math.js'
 import { GameClient } from '../network/game-client.js'
 import { hasDebugAlwaysDrag } from '../layout/mode.js'
+import { buildSettledSnapshotPayload } from '../network/shot-state.js'
 
 /**
  * 将当前的母球摆放位置同步给远程对手。
@@ -37,7 +38,7 @@ export function bindGameInput(game) {
    */
   const start = (e) => {
     // 联机拦截：如果不是我的回合或回合已锁定，则不处理输入
-    if ((!GameClient.isMyTurn || game.isTurnLocked) && !debugAlwaysDrag) return;
+    if ((!GameClient.isMyTurn || game.isTurnLocked || game.roomPhase !== 'PLAYING') && !debugAlwaysDrag) return;
 
     game.audio.unlock()
     game.updatePos(e.touches ? e.touches[0] : e, game.ballInHand ? 'placement' : 'aim')
@@ -67,7 +68,7 @@ export function bindGameInput(game) {
    * @param {MouseEvent|TouchEvent} e - 输入事件。
    */
   const move = (e) => {
-    if (!GameClient.isMyTurn && !debugAlwaysDrag) return;
+    if ((!GameClient.isMyTurn || game.roomPhase !== 'PLAYING') && !debugAlwaysDrag) return;
 
     game.updatePos(e.touches ? e.touches[0] : e, game.ballInHand && game.placingCue ? 'placement' : 'aim')
     
@@ -113,7 +114,7 @@ export function bindGameInput(game) {
    * 鼠标/触摸结束的内部处理函数。
    */
   const end = () => {
-    if (!GameClient.isMyTurn && !debugAlwaysDrag) return;
+    if ((!GameClient.isMyTurn || (game.roomPhase !== 'PLAYING' && !game.ballInHand)) && !debugAlwaysDrag) return;
 
     // 结束白球摆放
     if (game.ballInHand && game.placingCue) {
@@ -150,18 +151,23 @@ export function bindGameInput(game) {
         }
 
         // --- 联机同步：发送击球消息 ---
+        const baseSnapshot = buildSettledSnapshotPayload(game)
+        const shotInput = {
+          turnId: game.turnId,
+          stateVersion: game.stateVersion,
+          shotToken: game.shotToken,
+          preStateHash: game.stateHash || baseSnapshot.stateHash,
+          cueBallPos: { x: game.cueBall.pos.x, y: game.cueBall.pos.y },
+          aimAngle: game.aimAngle,
+          powerRatio,
+        }
+
         if (!debugAlwaysDrag) {
-          GameClient.sendShoot({ aimAngle: game.aimAngle, powerRatio: powerRatio });
+          GameClient.sendShotStartRequest(shotInput);
           GameClient.sendAim({ aimAngle: game.aimAngle, pullDistance: 0 });
         }
 
-        const speed = 4 + Math.pow(powerRatio, 1.35) * 34
-        game.cueBall.vel = aimDir.mul(speed * SHOT_POWER_SCALE * 7.2)
-        game.ballPocketedThisTurn = false
-        game.releaseFlash = RELEASE_FLASH_DURATION
-        game.requiresKitchenBreakDirection = false
-        game.audio.playShot(powerRatio)
-        game.beginShot()
+        game.beginLocalAuthoritativeShot(shotInput)
       }
     }
 

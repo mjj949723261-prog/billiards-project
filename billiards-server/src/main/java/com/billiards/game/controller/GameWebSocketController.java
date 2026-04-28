@@ -85,6 +85,16 @@ public class GameWebSocketController {
         messagingTemplate.convertAndSend("/topic/room/" + message.getRoomId(), message);
     }
 
+    @MessageMapping("/game.shotStart")
+    public void shotStart(@Payload GameMessage message) {
+        roomService.processShotStart(message.getRoomId(), message.getSenderId(), message.getContent());
+    }
+
+    @MessageMapping("/game.shotEnd")
+    public void shotEnd(@Payload GameMessage message) {
+        roomService.processShotEndReport(message.getRoomId(), message.getSenderId(), message.getContent());
+    }
+
     /**
      * 处理实时瞄准/移动球杆消息
      * 客户端发送路径: /app/game.aim

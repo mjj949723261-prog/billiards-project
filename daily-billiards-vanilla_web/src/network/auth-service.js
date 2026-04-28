@@ -8,6 +8,29 @@ import { resolveServerOrigin } from './game-client.js';
 const TOKEN_KEY = 'billiards_jwt_token';
 const USER_KEY = 'billiards_user_info';
 
+function createMemoryStorage() {
+    const memory = new Map();
+    return {
+        getItem(key) {
+            return memory.has(key) ? memory.get(key) : null;
+        },
+        setItem(key, value) {
+            memory.set(key, String(value));
+        },
+        removeItem(key) {
+            memory.delete(key);
+        }
+    };
+}
+
+const localStore = typeof globalThis.localStorage !== 'undefined'
+    ? globalThis.localStorage
+    : createMemoryStorage();
+
+const sessionStore = typeof globalThis.sessionStorage !== 'undefined'
+    ? globalThis.sessionStorage
+    : createMemoryStorage();
+
 export const AuthService = {
     /**
      * 用户登录
@@ -61,8 +84,8 @@ export const AuthService = {
      * @param {Object} authData 
      */
     saveSession(authData) {
-        localStorage.setItem(TOKEN_KEY, authData.token);
-        localStorage.setItem(USER_KEY, JSON.stringify({
+        localStore.setItem(TOKEN_KEY, authData.token);
+        localStore.setItem(USER_KEY, JSON.stringify({
             id: authData.id,
             username: authData.username,
             nickname: authData.nickname,
@@ -74,10 +97,10 @@ export const AuthService = {
      * 退出登录，清理本地存储
      */
     logout() {
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
-        sessionStorage.removeItem('billiards_player_id');
-        sessionStorage.removeItem('billiards_nickname');
+        localStore.removeItem(TOKEN_KEY);
+        localStore.removeItem(USER_KEY);
+        sessionStore.removeItem('billiards_player_id');
+        sessionStore.removeItem('billiards_nickname');
     },
 
     /**
@@ -85,7 +108,7 @@ export const AuthService = {
      * @returns {string|null}
      */
     getToken() {
-        return localStorage.getItem(TOKEN_KEY);
+        return localStore.getItem(TOKEN_KEY);
     },
 
     /**
@@ -93,7 +116,7 @@ export const AuthService = {
      * @returns {Object|null}
      */
     getUser() {
-        const userStr = localStorage.getItem(USER_KEY);
+        const userStr = localStore.getItem(USER_KEY);
         return userStr ? JSON.parse(userStr) : null;
     },
 

@@ -88,6 +88,10 @@ export const GameClient = {
     playerNames: {},
     /** @type {boolean} 当前是否轮到本客户端击球。 */
     isMyTurn: false,
+    /** @type {boolean} 是否启用轻量裁决协议。 */
+    lightweightAuthorityEnabled: true,
+    /** @type {string} 当前房间阶段。 */
+    roomPhase: 'WAITING',
 
     /**
      * 检查是否缺少全局依赖项 (SockJS, Stomp)。
@@ -242,6 +246,7 @@ export const GameClient = {
                     const roomObj = data.room || data;
                     const finalRoomId = msg.roomId || roomObj.roomId || roomObj.id;
                     this.isMyTurn = (roomObj.currentTurnPlayerId === this.playerId);
+                    this.roomPhase = roomObj.status || this.roomPhase;
                     
                     const mergedRoom = { ...roomObj, ...data, roomId: finalRoomId, _msgType: 'JOIN' };
                     window.handleGameStart(mergedRoom);
@@ -254,6 +259,7 @@ export const GameClient = {
                     const finalRoomId = msg.roomId || roomObj.roomId || roomObj.id;
                     this.playerNames = roomObj.playerNames || this.playerNames || {};
                     this.isMyTurn = (roomObj.currentTurnPlayerId === this.playerId);
+                    this.roomPhase = roomObj.status || this.roomPhase;
                     
                     const mergedRoom = { ...roomObj, ...data, roomId: finalRoomId, _msgType: 'GAME_START' };
                     if (window.handleGameStart) window.handleGameStart(mergedRoom);
@@ -264,9 +270,31 @@ export const GameClient = {
                     window.handleRemoteAim(msg.content);
                 }
                 break;
-            case 'SHOOT':
-                if (msg.senderId !== this.playerId && window.handleRemoteShoot) {
-                    window.handleRemoteShoot(msg.content);
+            case 'SHOT_START_ACCEPTED':
+                if (msg.content) {
+                    const roomObj = msg.content.room || {};
+                    this.roomPhase = roomObj.status || 'RESOLVING';
+                    if (window.handleShotStartAccepted) {
+                        window.handleShotStartAccepted(msg.content, msg.senderId);
+                    }
+                }
+                break;
+            case 'SHOT_RESULT':
+                if (msg.content) {
+                    const roomObj = msg.content.room || {};
+                    this.roomPhase = roomObj.status || 'PLAYING';
+                    this.isMyTurn = roomObj.currentTurnPlayerId === this.playerId;
+                    if (window.handleShotResult) {
+                        window.handleShotResult(msg.content);
+                    }
+                }
+                break;
+            case 'ROOM_SNAPSHOT':
+                if (msg.content && window.handleRoomSnapshot) {
+                    const roomObj = msg.content.room || {};
+                    this.roomPhase = roomObj.status || this.roomPhase;
+                    this.isMyTurn = roomObj.currentTurnPlayerId === this.playerId;
+                    window.handleRoomSnapshot(msg.content);
                 }
                 break;
             case 'SYNC_STATE':
@@ -284,6 +312,7 @@ export const GameClient = {
                     const roomObj = data.room || {};
                     const expireAt = data.expireAt || roomObj.expireAt;
                     const serverTime = data.serverTime || roomObj.serverTime;
+                    this.roomPhase = roomObj.status || this.roomPhase;
                     
                     // 核心逻辑：强制同步当前出杆者，解决“倒计时归零不换人”的 UI 延迟或状态不一致问题
                     if (roomObj.currentTurnPlayerId) {
@@ -333,10 +362,14 @@ export const GameClient = {
                     const room = data.room || data;
                     this.playerNames = room.playerNames || this.playerNames || {};
                     this.isMyTurn = (room.currentTurnPlayerId === this.playerId);
+                    this.roomPhase = room.status || 'PLAYING';
                     if (window.handleTurnSwitch) window.handleTurnSwitch(data);
                 }
                 break;
             case 'PLAYER_LEFT':
+                if (msg.content?.room?.status) {
+                    this.roomPhase = msg.content.room.status;
+                }
                 if (msg.senderId !== this.playerId && window.game) {
                     window.game.setStatusMessage('对手已断开连接', 5000);
                 }
@@ -365,6 +398,26 @@ export const GameClient = {
             senderId: this.playerId,
             roomId: this.roomId,
             content: shootData
+        }));
+    },
+
+    sendShotStartRequest(shotData) {
+        if (!this.stompClient || !this.roomId) return;
+        this.stompClient.send("/app/game.shotStart", {}, JSON.stringify({
+            type: 'SHOT_START_REQUEST',
+            senderId: this.playerId,
+            roomId: this.roomId,
+            content: shotData,
+        }));
+    },
+
+    sendShotEndReport(reportData) {
+        if (!this.stompClient || !this.roomId) return;
+        this.stompClient.send("/app/game.shotEnd", {}, JSON.stringify({
+            type: 'SHOT_END_REPORT',
+            senderId: this.playerId,
+            roomId: this.roomId,
+            content: reportData,
         }));
     },
 
@@ -421,5 +474,9 @@ export const GameClient = {
             roomId: this.roomId,
             content: text
         }));
+    },
+
+    usesLightweightAuthority() {
+        return this.lightweightAuthorityEnabled;
     }
 };
