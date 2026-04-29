@@ -243,6 +243,65 @@ test('syncTimer pauses countdown without zeroing remaining time when server stop
   }
 })
 
+test('accepted shot metadata is reconciled back into the local optimistic shot state', async () => {
+  const originalSessionStorage = globalThis.sessionStorage
+
+  globalThis.sessionStorage = {
+    getItem() { return null },
+    setItem() {},
+    removeItem() {},
+  }
+
+  const { BilliardsGame } = await import(`./src/game.js?case=accepted-shot-${Date.now()}`)
+
+  try {
+    const game = Object.create(BilliardsGame.prototype)
+    game.lastAppliedShotId = null
+    game.lastKnownShotStartedAt = 0
+    game.lastKnownShotProtocol = null
+
+    game.reconcileAcceptedShot({
+      shotId: 'shot-123',
+      startedAt: 123456789,
+      protocol: 'shot-start-v1',
+    })
+
+    assert.equal(game.lastAppliedShotId, 'shot-123')
+    assert.equal(game.lastKnownShotStartedAt, 123456789)
+    assert.equal(game.lastKnownShotProtocol, 'shot-start-v1')
+  } finally {
+    globalThis.sessionStorage = originalSessionStorage
+  }
+})
+
+test('visual motion stays true while render position is still catching up', async () => {
+  const originalSessionStorage = globalThis.sessionStorage
+
+  globalThis.sessionStorage = {
+    getItem() { return null },
+    setItem() {},
+    removeItem() {},
+  }
+
+  const { BilliardsGame } = await import(`./src/game.js?case=visual-motion-${Date.now()}`)
+
+  try {
+    const driftingBall = new Ball(0, 0, '#fff', 'cue', 'cue')
+    driftingBall.renderPos.x = 0
+    driftingBall.physicsPos.x = 1.2
+
+    const game = Object.create(BilliardsGame.prototype)
+    game.balls = [driftingBall]
+
+    assert.equal(game.hasVisualMotion(), true)
+
+    driftingBall.renderPos.x = driftingBall.physicsPos.x
+    assert.equal(game.hasVisualMotion(), false)
+  } finally {
+    globalThis.sessionStorage = originalSessionStorage
+  }
+})
+
 test('live movement snapshots are ignored to avoid remote tug-of-war during collisions', async () => {
   const originalSessionStorage = globalThis.sessionStorage
 
@@ -376,6 +435,59 @@ test('main entry should expose connection errors inside the auth panel', () => {
   assert.doesNotMatch(html, /id="game-info"/)
   assert.doesNotMatch(html, /复制链接/)
   assert.match(html, /双人台球/)
+})
+
+test('main entry should treat shot rejection errors as in-game rollback instead of lobby failure', () => {
+  const source = fs.readFileSync(new URL('./main.js', import.meta.url), 'utf8')
+
+  assert.match(source, /const isShotStartRejected = errorCode === 'SHOT_START_REJECTED' \|\| errorMessage\.includes\('当前不能出杆'\)/)
+  assert.match(source, /const isShotRollback = errorMessage\.includes\('本杆'\)/)
+  assert.match(source, /if \(isInGameSoftError\) \{/)
+  assert.match(source, /window\.game\.rollbackToSettledSnapshot\(errorMessage\)/)
+})
+
+test('room service should return structured shot rejection payloads for local rollback', () => {
+  const source = fs.readFileSync(new URL('../billiards-server/src/main/java/com/billiards/game/service/RoomService.java', import.meta.url), 'utf8')
+
+  assert.match(source, /sendError\(room, senderId, "SHOT_START_REJECTED", "当前不能出杆"\)/)
+  assert.match(source, /payload\.put\("code", code\);/)
+  assert.match(source, /payload\.put\("room", buildRoomSnapshot\(room\)\);/)
+})
+
+test('room service should prefer shooter shot-end report when only final state hash drifts', () => {
+  const source = fs.readFileSync(new URL('../billiards-server/src/main/java/com/billiards/game/service/RoomService.java', import.meta.url), 'utf8')
+
+  assert.match(source, /if \(reportsBusinessCompatible\(first, second\)\) \{/)
+  assert.match(source, /Map<String, Object> shooterPreferred = "shooter"\.equals\(asString\(first\.get\("senderRole"\)\)\)/)
+  assert.match(source, /SHOT_END finalStateHash mismatch but business outcome matched/)
+  assert.match(source, /normalizeStringList\(asList\(first\.get\("pocketedBallIds"\)\)\)\.equals\(normalizeStringList\(asList\(second\.get\("pocketedBallIds"\)\)\)\)/)
+})
+
+test('local authoritative shot should wait for SHOT_START_ACCEPTED before launching cue ball', () => {
+  const gameSource = fs.readFileSync(new URL('./src/game.js', import.meta.url), 'utf8')
+  const mainSource = fs.readFileSync(new URL('./main.js', import.meta.url), 'utf8')
+
+  assert.match(gameSource, /beginLocalAuthoritativeShot\(shotInput\) \{\s*this\.pendingShotRequest = shotInput\s*this\.roomPhase = 'RESOLVING'\s*this\.awaitingShotResult = true\s*\}/s)
+  assert.doesNotMatch(gameSource, /beginLocalAuthoritativeShot[\s\S]*executeAcceptedShotInput\(shotInput\)/)
+  assert.match(mainSource, /if \(!isOwnOptimisticShot\) \{\s*window\.game\.executeAcceptedShotInput\(shot\)\s*\} else \{\s*window\.game\.executeAcceptedShotInput\(shot\)/s)
+})
+
+test('ball-in-hand placement commit should use dedicated sync kind without locally hard-locking the next shot', () => {
+  const gameSource = fs.readFileSync(new URL('./src/game.js', import.meta.url), 'utf8')
+  const inputSource = fs.readFileSync(new URL('./src/input/bindings.js', import.meta.url), 'utf8')
+
+  assert.match(gameSource, /createPlacementCommitSnapshot\(\) \{\s*return \{\s*\.\.\.this\.getGameStateSnapshot\(\),\s*syncKind: 'ball-in-hand-commit',/s)
+  assert.match(inputSource, /game\.awaitingSettledSync = false/)
+  assert.match(inputSource, /game\.isTurnLocked = false/)
+  assert.match(inputSource, /GameClient\.sendSync\(game\.createPlacementCommitSnapshot\(\)\)/)
+  assert.match(gameSource, /!this\.ballInHand && !this\.isTurnLocked && !this\.awaitingSettledSync && !this\.isMoving\(\)/)
+})
+
+test('game client should always apply SYSTEM sync messages for the local player', () => {
+  const source = fs.readFileSync(new URL('./src/network/game-client.js', import.meta.url), 'utf8')
+
+  assert.match(source, /const isSystem = msg\.senderId === 'SYSTEM';/)
+  assert.match(source, /if \(isSystem \|\| msg\.senderId !== this\.playerId\) \{\s*window\.handleRemoteStateSync\(msg\.content\);\s*\}/s)
 })
 
 test('embedded portrait layout can be forced by host app or URL param', () => {
@@ -1600,6 +1712,34 @@ test('room service periodic sync excludes room ballState and only persists settl
   assert.match(source, /roomSync\.put\("currentTurnPlayerId", room\.getCurrentTurnPlayerId\(\)\);/)
   assert.match(source, /private void startPeriodicSync\(String roomId\) \{[\s\S]*"room", roomSync,/)
   assert.match(source, /if \(!isLive\) \{\s*room\.setBallState\(content\);\s*\}/s)
+})
+
+test('game websocket controller rebroadcasts accepted sync reconciliation as SYSTEM authoritative state', () => {
+  const source = fs.readFileSync(new URL('../billiards-server/src/main/java/com/billiards/game/controller/GameWebSocketController.java', import.meta.url), 'utf8')
+
+  assert.match(source, /outbound = GameMessage\.builder\(\)/)
+  assert.match(source, /\.type\(GameMessage\.MessageType\.SYNC_STATE\)/)
+  assert.match(source, /\.senderId\("SYSTEM"\)/)
+  assert.match(source, /\.content\(authoritativeContent\)/)
+})
+
+test('game client accepts authoritative sync even when it originated from the local player channel', () => {
+  const source = fs.readFileSync(new URL('./src/network/game-client.js', import.meta.url), 'utf8')
+
+  assert.match(source, /const isAuthoritative = msg\.content\?\.authoritative === true;/)
+  assert.match(source, /if \(isSystem \|\| isAuthoritative \|\| msg\.senderId !== this\.playerId\)/)
+})
+
+test('ball-in-hand snapshots keep the cue ball visible on both server and client recovery paths', () => {
+  const roomServiceSource = fs.readFileSync(new URL('../billiards-server/src/main/java/com/billiards/game/service/RoomService.java', import.meta.url), 'utf8')
+  const gameSource = fs.readFileSync(new URL('./src/game.js', import.meta.url), 'utf8')
+
+  assert.match(roomServiceSource, /boolean isPlacementCommit = false;/)
+  assert.match(roomServiceSource, /ensureCueBallVisible\(normalizedBalls, zone, true\);/)
+  assert.match(roomServiceSource, /room\.setLastSettledBallState\(canonicalContent\);/)
+  assert.match(gameSource, /if \(this\.ballInHand && this\.cueBall\?\.pocketed\) \{/)
+  assert.match(gameSource, /this\.cueBall\.pocketed = false/)
+  assert.match(gameSource, /this\.cueBall\.pos = new Vec2\(this\.ballInHandZone === 'kitchen' \? HEAD_STRING_X : -TABLE_WIDTH \/ 4, 0\)/)
 })
 
 test('gameplay room layout splits tools top and players on short rails without a bottom control bar', () => {

@@ -8,7 +8,7 @@ import {
   BALL_RADIUS,
   HEAD_STRING_X,
   MAX_PULL_DISTANCE,
-} from '../constants.js'
+} from '../constants.js?v=20260429-room-entry-fix'
 import { Vec2 } from '../math.js'
 import { GameClient } from '../network/game-client.js'
 import { hasDebugAlwaysDrag } from '../layout/mode.js'
@@ -20,6 +20,11 @@ import { buildSettledSnapshotPayload } from '../network/shot-state.js'
  */
 function syncCuePlacement(game) {
   GameClient.sendSync(game.createLivePlacementSnapshot())
+}
+
+function clearDragInteraction(game) {
+  game.isDragging = false
+  game.pullDistance = 0
 }
 
 /**
@@ -67,7 +72,7 @@ export function bindGameInput(game) {
    * @param {MouseEvent|TouchEvent} e - 输入事件。
    */
   const move = (e) => {
-    if ((!GameClient.isMyTurn || game.roomPhase !== 'PLAYING') && !debugAlwaysDrag) return;
+    if ((!GameClient.isMyTurn || game.isTurnLocked || game.roomPhase !== 'PLAYING') && !debugAlwaysDrag) return;
     if (game.awaitingSettledSync && !debugAlwaysDrag) return;
 
     game.updatePos(e.touches ? e.touches[0] : e, game.ballInHand && game.placingCue ? 'placement' : 'aim')
@@ -114,8 +119,14 @@ export function bindGameInput(game) {
    * 鼠标/触摸结束的内部处理函数。
    */
   const end = () => {
-    if ((!GameClient.isMyTurn || (game.roomPhase !== 'PLAYING' && !game.ballInHand)) && !debugAlwaysDrag) return;
-    if (game.awaitingSettledSync && !debugAlwaysDrag) return;
+    if ((!GameClient.isMyTurn || (game.roomPhase !== 'PLAYING' && !game.ballInHand)) && !debugAlwaysDrag) {
+      clearDragInteraction(game)
+      return
+    }
+    if (game.awaitingSettledSync && !debugAlwaysDrag) {
+      clearDragInteraction(game)
+      return
+    }
 
     // 结束白球摆放
     if (game.ballInHand && game.placingCue) {
@@ -124,10 +135,12 @@ export function bindGameInput(game) {
         const kitchenPlacement = game.ballInHandZone === 'kitchen'
         game.ballInHand = false
         game.ballInHandZone = 'table'
+        game.awaitingSettledSync = false
+        game.isTurnLocked = false
         game.requiresKitchenBreakDirection = kitchenPlacement
         game.setStatusMessage(`玩家${game.currentPlayer}已摆好白球`, 1200)
         game.updateUI()
-        GameClient.sendSync(game.createSettledSyncSnapshot())
+        GameClient.sendSync(game.createPlacementCommitSnapshot())
       } else {
         game.setStatusMessage('白球摆放位置无效', 1600)
       }
@@ -145,8 +158,7 @@ export function bindGameInput(game) {
         const breakGuide = breakAimDir ? game.getAimGuide(breakAimDir) : null
         const crossesHeadString = !breakGuide || breakGuide.hitPoint.x > HEAD_STRING_X + BALL_RADIUS
         if (game.requiresKitchenBreakDirection && (!crossesHeadString || breakAimDir.x <= 0.08)) {
-          game.isDragging = false
-          game.pullDistance = 0
+          clearDragInteraction(game)
           game.setStatusMessage('开球方向无效', 1800)
           return
         }
@@ -175,8 +187,7 @@ export function bindGameInput(game) {
     if (!game.ballInHand && !debugAlwaysDrag) {
       GameClient.sendAim({ aimAngle: game.aimAngle, pullDistance: 0 });
     }
-    game.pullDistance = 0
-    game.isDragging = false
+    clearDragInteraction(game)
   }
 
   // 注册事件监听器

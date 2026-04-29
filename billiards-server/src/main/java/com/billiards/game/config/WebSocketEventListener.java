@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -30,9 +31,15 @@ public class WebSocketEventListener {
     private RoomService roomService;
 
     private final Map<String, String> sessionPlayerMap = new ConcurrentHashMap<>();
+    private static final Set<String> onlinePlayers = ConcurrentHashMap.newKeySet();
 
     public void registerSession(String sessionId, String playerId) {
         sessionPlayerMap.put(sessionId, playerId);
+        onlinePlayers.add(playerId);
+    }
+
+    public static boolean isPlayerOnline(String playerId) {
+        return onlinePlayers.contains(playerId);
     }
 
     @EventListener
@@ -42,6 +49,7 @@ public class WebSocketEventListener {
         
         String playerId = sessionPlayerMap.remove(sessionId);
         if (playerId != null) {
+            onlinePlayers.remove(playerId);
             log.info("玩家 {} 已断开连接", playerId);
             roomService.handleDisconnect(playerId);
         }

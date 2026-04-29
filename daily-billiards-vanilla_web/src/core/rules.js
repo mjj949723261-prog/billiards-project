@@ -4,7 +4,7 @@
  * 包括回合切换、自由球（白球在手）规则、球组分配以及击球合法性评估。
  */
 
-import { HEAD_STRING_X, TURN_TIME_LIMIT, TABLE_WIDTH } from '../constants.js'
+import { HEAD_STRING_X, TURN_TIME_LIMIT, TABLE_WIDTH } from '../constants.js?v=20260429-room-entry-fix'
 import { Vec2 } from '../math.js'
 
 /**

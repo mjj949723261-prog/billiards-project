@@ -4,7 +4,7 @@
  * 以及球体颜色和类型属性。
  */
 
-import { BALL_RADIUS, FRICTION, VELOCITY_THRESHOLD } from '../constants.js';
+import { BALL_RADIUS, FRICTION, VELOCITY_THRESHOLD } from '../constants.js?v=20260429-room-entry-fix';
 import { Vec2 } from '../math.js';
 
 /**
@@ -86,6 +86,44 @@ function mat3RotateColMajor(axisX, axisY, axisZ, angle) {
     out[7] = y * z * t - x * s;
     out[8] = z * z * t + c;
     return out;
+}
+
+/**
+ * 对 3x3 矩阵进行正交规范化（Gram-Schmidt 过程）。
+ * 确保旋转矩阵在插值后依然满足 SO(3) 约束。
+ * @param {Float32Array} m - 待处理的 3x3 矩阵。
+ * @returns {Float32Array} 处理后的矩阵。
+ */
+function mat3Normalize(m) {
+    // 列向量 v1, v2, v3
+    let v1 = {x: m[0], y: m[1], z: m[2]};
+    let v2 = {x: m[3], y: m[4], z: m[5]};
+    
+    // Normalize v1
+    let l1 = Math.sqrt(v1.x*v1.x + v1.y*v1.y + v1.z*v1.z);
+    if (l1 < 1e-6) return m; // 防止除零
+    v1.x /= l1; v1.y /= l1; v1.z /= l1;
+    
+    // Make v2 orthogonal to v1
+    let dot12 = v1.x*v2.x + v1.y*v2.y + v1.z*v2.z;
+    v2.x -= dot12 * v1.x; v2.y -= dot12 * v1.y; v2.z -= dot12 * v1.z;
+    
+    // Normalize v2
+    let l2 = Math.sqrt(v2.x*v2.x + v2.y*v2.y + v2.z*v2.z);
+    if (l2 < 1e-6) return m;
+    v2.x /= l2; v2.y /= l2; v2.z /= l2;
+    
+    // v3 = v1 x v2
+    let v3 = {
+        x: v1.y * v2.z - v1.z * v2.y,
+        y: v1.z * v2.x - v1.x * v2.z,
+        z: v1.x * v2.y - v1.y * v2.x
+    };
+    
+    m[0] = v1.x; m[1] = v1.y; m[2] = v1.z;
+    m[3] = v2.x; m[4] = v2.y; m[5] = v2.z;
+    m[6] = v3.x; m[7] = v3.y; m[8] = v3.z;
+    return m;
 }
 
 /**
@@ -186,9 +224,12 @@ export class Ball {
 
   /**
    * 让渲染层状态平滑追赶物理层状态。
-   * @param {number} [smoothFactor=0.25] - 平滑追赶系数。
+   * @param {number} dt - 帧间隔时间（秒）。
    */
-  updateRender(smoothFactor = 0.25) {
+  updateRender(dt = 1 / 60) {
+    const k = 18.0;
+    const smoothFactor = 1.0 - Math.exp(-k * Math.max(0, dt));
+
     if (this.pocketed) {
       this.renderPos.x = this.physicsPos.x;
       this.renderPos.y = this.physicsPos.y;
@@ -199,10 +240,11 @@ export class Ball {
     this.renderPos.x += (this.physicsPos.x - this.renderPos.x) * smoothFactor;
     this.renderPos.y += (this.physicsPos.y - this.renderPos.y) * smoothFactor;
 
-    // 旋转矩阵平滑插值
+    // 旋转矩阵平滑插值并正交规范化
     for (let i = 0; i < 9; i++) {
       this.renderRot[i] += (this.physicsRot[i] - this.renderRot[i]) * smoothFactor;
     }
+    mat3Normalize(this.renderRot);
   }
 
   /**

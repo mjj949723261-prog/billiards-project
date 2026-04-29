@@ -10,7 +10,11 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -126,5 +130,78 @@ class RoomServiceTest {
 
         // 验证昵称已存入映射
         assertEquals("小明", room.getPlayerNames().get("p1"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void adjudicateShotRespawnsCueBallWhenFoulGrantsBallInHand() throws Exception {
+        BilliardsRoom room = new BilliardsRoom();
+        room.setRoomId("ROOM1");
+        room.getPlayerIds().add("p1");
+        room.getPlayerIds().add("p2");
+        room.setStatus(BilliardsRoom.GameStatus.PLAYING);
+        room.setCurrentTurnPlayerId("p1");
+        room.setBreakShot(false);
+        room.setTurnId(7L);
+        room.setStateVersion(11L);
+        room.setPlayer1Group("OPEN");
+        room.setPlayer2Group("OPEN");
+
+        List<Map<String, Object>> settledState = List.of(
+                ball("cue", "cue", 24.0, 0.0, 0.0, 0.0, false),
+                ball("1", "solid", 140.0, 0.0, 0.0, 0.0, false));
+        room.setLastSettledBallState(settledState);
+
+        List<Map<String, Object>> reportedFinalState = List.of(
+                ball("cue", "cue", 360.0, 160.0, 0.0, 0.0, true),
+                ball("1", "solid", 140.0, 0.0, 0.0, 0.0, false));
+
+        Method buildStateHash = RoomService.class.getDeclaredMethod("buildStateHash", List.class);
+        buildStateHash.setAccessible(true);
+        String reportedHash = (String) buildStateHash.invoke(roomService, reportedFinalState);
+
+        Map<String, Object> report = new LinkedHashMap<>();
+        report.put("finalBallState", reportedFinalState);
+        report.put("finalStateHash", reportedHash);
+        report.put("railContacts", 1);
+        report.put("firstContactBallId", "1");
+
+        Method adjudicateShot = RoomService.class.getDeclaredMethod("adjudicateShot", BilliardsRoom.class, Map.class);
+        adjudicateShot.setAccessible(true);
+        Map<String, Object> result = (Map<String, Object>) adjudicateShot.invoke(roomService, room, report);
+
+        assertNotNull(result);
+        assertEquals(true, result.get("ballInHand"));
+        assertEquals("table", result.get("ballInHandZone"));
+
+        List<Map<String, Object>> finalBallState = (List<Map<String, Object>>) result.get("finalBallState");
+        Map<String, Object> cueBall = finalBallState.stream()
+                .filter(ball -> "cue".equals(ball.get("type")))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals(false, cueBall.get("pocketed"));
+        assertEquals(-205.0, ((Number) cueBall.get("x")).doubleValue());
+        assertEquals(0.0, ((Number) cueBall.get("y")).doubleValue());
+        assertEquals(0.0, ((Number) cueBall.get("vx")).doubleValue());
+        assertEquals(0.0, ((Number) cueBall.get("vy")).doubleValue());
+
+        List<Map<String, Object>> expectedResolvedState = List.of(
+                ball("cue", "cue", -205.0, 0.0, 0.0, 0.0, false),
+                ball("1", "solid", 140.0, 0.0, 0.0, 0.0, false));
+        String expectedHash = (String) buildStateHash.invoke(roomService, expectedResolvedState);
+        assertEquals(expectedHash, result.get("stateHash"));
+    }
+
+    private static Map<String, Object> ball(String id, String type, double x, double y, double vx, double vy, boolean pocketed) {
+        Map<String, Object> ball = new LinkedHashMap<>();
+        ball.put("id", id);
+        ball.put("type", type);
+        ball.put("x", x);
+        ball.put("y", y);
+        ball.put("vx", vx);
+        ball.put("vy", vy);
+        ball.put("pocketed", pocketed);
+        return ball;
     }
 }

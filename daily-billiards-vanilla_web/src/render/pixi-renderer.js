@@ -2,7 +2,7 @@ import { AssetsBase64 } from './assets.js';
 import {
   BALL_RADIUS, HEAD_STRING_X, MAX_PULL_DISTANCE, PLAYABLE_AREA_INSET, POCKET_RADIUS,
   RAIL_THICKNESS, RELEASE_FLASH_DURATION, TABLE_HEIGHT, TABLE_WIDTH
-} from '../constants.js';
+} from '../constants.js?v=20260429-room-entry-fix';
 import { hasDebugOverlay, isPortraitLayout } from '../layout/mode.js';
 import { Vec2 } from '../math.js';
 import { GameClient } from '../network/game-client.js';
@@ -525,7 +525,7 @@ export class PixiRenderer {
             this.drawDashedLineCircle(g, game.cueBall.renderPos.x, game.cueBall.renderPos.y, BALL_RADIUS + 8, color, alpha, 3, [10, 6]);
         }
 
-        if (!game.ballInHand && !game.isMoving() && !game.cueBall.pocketed && !game.isGameOver) {
+        if (!game.ballInHand && !game.isMoving() && !game.shotActive && !game.hasVisualMotion?.() && !game.cueBall.pocketed && !game.isGameOver) {
             this.drawAimAndCue(game);
         } else {
             this.cueStick.clear();

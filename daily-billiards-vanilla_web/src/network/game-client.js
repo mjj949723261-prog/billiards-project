@@ -48,6 +48,61 @@ export function resolveServerOrigin() {
 
 import { AuthService } from './auth-service.js';
 
+function readDebugFlags() {
+    if (typeof window === 'undefined') {
+        return {
+            stomp: false,
+            roomFlow: false,
+            syncFlow: false,
+            aimFlow: false,
+        };
+    }
+
+    const hash = window.location?.hash || '';
+    const search = window.location?.search || '';
+    const storageDebug = typeof globalThis.localStorage !== 'undefined'
+        ? globalThis.localStorage.getItem('billiards_debug') || ''
+        : '';
+    const source = `${hash} ${search} ${storageDebug}`.toLowerCase();
+
+    return {
+        stomp: source.includes('debug-stomp'),
+        roomFlow: source.includes('debug-room'),
+        syncFlow: source.includes('debug-sync'),
+        aimFlow: source.includes('debug-aim'),
+    };
+}
+
+const DEBUG_FLAGS = readDebugFlags();
+
+function debugLog(channel, ...args) {
+    if (!DEBUG_FLAGS[channel]) return;
+    console.log(...args);
+}
+
+function summarizeSyncContent(content) {
+    const room = content?.room || {};
+    const balls = content?.ballState?.balls || content?.ballState || content?.balls || [];
+    const cueBall = Array.isArray(balls)
+        ? balls.find(ball => ball?.type === 'cue')
+        : null;
+    return {
+        syncKind: content?.syncKind || 'unknown',
+        authoritative: content?.authoritative === true,
+        isLive: content?.isLive === true,
+        roomStatus: room?.status || content?.roomPhase || '',
+        currentTurnPlayerId: room?.currentTurnPlayerId || '',
+        ballInHand: room?.ballInHand ?? content?.ballInHand ?? null,
+        ballInHandZone: room?.ballInHandZone || content?.ballInHandZone || '',
+        cuePocketed: cueBall?.pocketed ?? null,
+        cueX: cueBall?.x ?? null,
+        cueY: cueBall?.y ?? null,
+        turnId: room?.turnId ?? content?.turnId ?? null,
+        stateVersion: room?.stateVersion ?? content?.stateVersion ?? null,
+        shotToken: room?.shotToken ?? content?.shotToken ?? null,
+    };
+}
+
 /**
  * 所有网络通信的单例客户端对象。
  */
@@ -130,7 +185,7 @@ export const GameClient = {
 
         const socket = new SockJS(`${resolveServerOrigin()}/game-socket`);
         this.stompClient = Stomp.over(socket);
-        this.stompClient.debug = (msg) => console.log('[STOMP] ' + msg);
+        this.stompClient.debug = (msg) => debugLog('stomp', '[STOMP]', msg);
 
         // 构建 STOMP 连接头部，包含 JWT (如果已登录)
         const headers = {};
@@ -140,7 +195,7 @@ export const GameClient = {
         }
 
         this.stompClient.connect(headers, () => {
-            console.log('Connected to server with PlayerID:', this.playerId);
+            debugLog('roomFlow', '[Realtime] Connected', { playerId: this.playerId, requestedRoomId });
             this.connectionState = 'connected';
 
             // 显式房间号入房时，先订阅房间 topic，避免个人队列回包偶发缺失时卡在“入房中”。
@@ -153,16 +208,21 @@ export const GameClient = {
             // 订阅个人消息队列，用于接收房间分配等信息
             this.stompClient.subscribe('/queue/player/' + this.playerId, (sdkEvent) => {
                 const msg = JSON.parse(sdkEvent.body);
-                console.log('Received Personal Message:', msg.type);
+                debugLog(msg.type === 'ERROR' ? 'syncFlow' : 'roomFlow', '[Realtime] Personal message', {
+                    type: msg.type,
+                    roomId: msg.roomId,
+                    senderId: msg.senderId,
+                });
                 if (msg.type === 'JOIN') {
                     this.roomId = msg.roomId;
                     storage.setItem('billiards_room_id', this.roomId);
-                    console.log('Joined Room:', this.roomId);
+                    debugLog('roomFlow', '[Realtime] Joined room', { roomId: this.roomId });
                     this.subscribeToRoom(this.roomId);
-                    
-                    // 统一通过 onMessageReceived 处理，保持消息处理一致性
-                    this.onMessageReceived(msg);
                 }
+
+                // 个人队列里的 JOIN / ERROR / ROOM_SNAPSHOT 都需要进入统一分发，
+                // 否则显式入房失败时会一直停在“正在加入房间”。
+                this.onMessageReceived(msg);
             });
 
             // 发送加入房间请求
@@ -238,7 +298,22 @@ export const GameClient = {
      * @param {Object} msg - 解析后的 JSON 消息对象。
      */
     onMessageReceived(msg) {
-        console.log('Received Message:', msg.type);
+        if (msg.type === 'AIM') {
+            debugLog('aimFlow', '[Realtime] AIM', {
+                roomId: msg.roomId,
+                senderId: msg.senderId,
+                aimAngle: msg.content?.aimAngle,
+                pullDistance: msg.content?.pullDistance,
+            });
+        } else if (msg.type === 'SYNC_STATE') {
+            debugLog('syncFlow', '[Realtime] SYNC_STATE', summarizeSyncContent(msg.content));
+        } else {
+            debugLog('roomFlow', '[Realtime] Room message', {
+                type: msg.type,
+                roomId: msg.roomId,
+                senderId: msg.senderId,
+            });
+        }
         switch(msg.type) {
             case 'JOIN':
                 if (msg.content && window.handleGameStart) {
@@ -298,10 +373,13 @@ export const GameClient = {
                 }
                 break;
             case 'SYNC_STATE':
-                // 只有当不是我的回合时，才接受来自他人的位置同步（防止本地抖动）
-                if (msg.senderId !== this.playerId && window.handleRemoteStateSync) {
+                // 普通玩家的 live sync 仍然只在“不是我自己发送”时接收，
+                // 但 SYSTEM 发来的 authoritative sync 必须始终处理，
+                // 否则当前出杆方会错过白球摆放确认、settled 对账与解锁状态。
+                if (window.handleRemoteStateSync) {
                     const isSystem = msg.senderId === 'SYSTEM';
-                    if (!isSystem || !this.isMyTurn) {
+                    const isAuthoritative = msg.content?.authoritative === true;
+                    if (isSystem || isAuthoritative || msg.senderId !== this.playerId) {
                         window.handleRemoteStateSync(msg.content);
                     }
                 }
@@ -328,7 +406,11 @@ export const GameClient = {
                         const isWaitingForServerCorrectSwitch = (window.game.isTurnLocked && !isSwitchingOnServer);
 
                         if (pIndex > 0 && isSwitchingOnServer && !isWaitingForServerCorrectSwitch) {
-                            console.log(`[SYNC] 服务器确认切换出杆者: ${window.game.currentPlayer} -> ${pIndex}`);
+                            debugLog('syncFlow', '[Realtime] Server turn correction', {
+                                fromPlayer: window.game.currentPlayer,
+                                toPlayer: pIndex,
+                                roomId: msg.roomId,
+                            });
                             
                             window.game.currentPlayer = pIndex;
                             window.game.isTurnLocked = false; // 解除时间到锁死

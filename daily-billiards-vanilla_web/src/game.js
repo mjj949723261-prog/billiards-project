@@ -19,7 +19,7 @@ import {
   HEAD_STRING_X,
   SHOT_POWER_SCALE,
   RELEASE_FLASH_DURATION,
-} from './constants.js'
+} from './constants.js?v=20260429-room-entry-fix'
 import { Vec2 } from './math.js'
 import { Ball } from './entities/ball.js'
 import { AudioManager } from './audio/audio-manager.js'
@@ -34,6 +34,8 @@ import { updateGameUi, updateTimerUi } from './ui/dom-ui.js'
 import { GameClient } from './network/game-client.js'
 import { applyStatusSync, createStatusSyncSnapshot } from './network/state-sync.js'
 import { buildSettledSnapshotPayload, createShotEndReport, snapshotStateFromRoomPayload } from './network/shot-state.js'
+
+const DEBUG_JITTER = typeof window !== 'undefined' && window.location.hash.includes('debug-jitter')
 
 /**
  * 管理所有台球逻辑和状态的主游戏类。
@@ -295,7 +297,21 @@ export class BilliardsGame {
    * 检查球桌上是否有任何球正在移动。
    * @returns {boolean} 如果有任何球的速度高于阈值，则返回 true。
    */
-  isMoving() { return this.balls.some(b => !b.pocketed && b.vel.length() > 0.05) }
+  isMoving() { return this.balls.some(b => !b.pocketed && b.vel.length() > 0.01) }
+
+  /**
+   * 检查渲染层是否仍在追赶物理层。
+   * 用于避免“逻辑上已停球，但画面还在滑动”时过早重新显示球杆。
+   * @returns {boolean} 是否存在可见的渲染追赶。
+   */
+  hasVisualMotion() {
+    return this.balls.some(ball => {
+      if (ball.pocketed) return false
+      const physicsPos = ball.physicsPos || ball.pos
+      const renderPos = ball.renderPos || physicsPos
+      return Math.hypot(physicsPos.x - renderPos.x, physicsPos.y - renderPos.y) > 0.35
+    })
+  }
 
   /**
    * 根据快照判断该局是否仍处于球体运动中。
@@ -352,10 +368,20 @@ export class BilliardsGame {
    * @returns {boolean} 是否成功启动本次击球。
    */
   applyShotStart(shotData, { remote = false } = {}) {
-    if (!shotData || typeof shotData !== 'object') return false
+    if (DEBUG_JITTER) console.log(`[ShotDebug] applyShotStart: remote=${remote}, shotId=${shotData?.shotId}, aimAngle=${shotData?.aimAngle}`);
+    if (!shotData || typeof shotData !== 'object') {
+      if (DEBUG_JITTER) console.error('[ShotDebug] Invalid shotData object:', shotData);
+      return false
+    }
     const { shotId = null, aimAngle, powerRatio, cueBallX, cueBallY } = shotData
-    if (!Number.isFinite(aimAngle) || !Number.isFinite(powerRatio)) return false
-    if (remote && shotId && shotId === this.lastAppliedShotId) return false
+    if (!Number.isFinite(aimAngle) || !Number.isFinite(powerRatio)) {
+      if (DEBUG_JITTER) console.error('[ShotDebug] Invalid aimAngle or powerRatio:', aimAngle, powerRatio);
+      return false
+    }
+    if (remote && shotId && shotId === this.lastAppliedShotId) {
+      if (DEBUG_JITTER) console.warn('[ShotDebug] Ignoring duplicate shotId:', shotId);
+      return false
+    }
 
     const safePowerRatio = Math.max(0, Math.min(1, powerRatio))
     this.showRemoteCue = false
@@ -370,6 +396,7 @@ export class BilliardsGame {
     const aimDir = new Vec2(Math.cos(aimAngle), Math.sin(aimAngle))
     const speed = 4 + Math.pow(safePowerRatio, 1.35) * 34
     this.cueBall.vel = aimDir.mul(speed * SHOT_POWER_SCALE * 7.2)
+    if (DEBUG_JITTER) console.log(`[ShotDebug] Launching cue ball: vel=${this.cueBall.vel.x.toFixed(2)}, ${this.cueBall.vel.y.toFixed(2)}`);
     this.ballPocketedThisTurn = false
     this.releaseFlash = RELEASE_FLASH_DURATION
     this.requiresKitchenBreakDirection = false
@@ -383,6 +410,24 @@ export class BilliardsGame {
   }
 
   /**
+   * 在本地已经乐观起杆后，补写服务端确认下来的权威击球元数据。
+   * 这样 shooter 端也能拿到 shotId / startedAt，后续 settled 对账才不会丢上下文。
+   * @param {Object} shotData - 服务端确认后的击球载荷。
+   */
+  reconcileAcceptedShot(shotData) {
+    if (!shotData || typeof shotData !== 'object') return
+    if (typeof shotData.shotId === 'string' && shotData.shotId) {
+      this.lastAppliedShotId = shotData.shotId
+    }
+    if (Number.isFinite(shotData.startedAt)) {
+      this.lastKnownShotStartedAt = shotData.startedAt
+    }
+    if (typeof shotData.protocol === 'string' && shotData.protocol) {
+      this.lastKnownShotProtocol = shotData.protocol
+    }
+  }
+
+  /**
    * 执行来自网络同步的远程击球事件。
    * @param {Object} shotData - 击球初始条件。
    */
@@ -390,8 +435,8 @@ export class BilliardsGame {
     this.applyShotStart(shotData, { remote: true })
   }
 
-  executeAcceptedShotInput({ aimAngle, powerRatio }) {
-    this.executeRemoteShoot(aimAngle, powerRatio)
+  executeAcceptedShotInput(shotData) {
+    this.executeRemoteShoot(shotData)
   }
 
   /**
@@ -470,6 +515,18 @@ export class BilliardsGame {
   }
 
   /**
+   * 创建白球摆放完成后的提交快照。
+   * 这不是上一杆 settled 对账，而是当前回合开始前的桌面确认。
+   * @returns {Object} placement commit 快照。
+   */
+  createPlacementCommitSnapshot() {
+    return {
+      ...this.getGameStateSnapshot(),
+      syncKind: 'ball-in-hand-commit',
+    }
+  }
+
+  /**
    * 使用服务器的权威时间戳同步回合计时器。
    * @param {number} startTime - 回合开始时间戳。
    * @param {number} expireAt - 回合过期时间戳。
@@ -533,7 +590,11 @@ export class BilliardsGame {
         if (s.rot) physicsRot.set(s.rot);
 
         const deviation = Math.hypot(physicsPos.x - renderPos.x, physicsPos.y - renderPos.y)
-        const shouldSnapRender = isPlacementLiveSync || wasPocketed !== ball.pocketed || deviation > BALL_RADIUS * 2
+        const shouldSnapRender = isPlacementLiveSync || wasPocketed !== ball.pocketed || deviation > BALL_RADIUS * 1.0
+
+        if (DEBUG_JITTER && deviation > 1) {
+          console.log(`[JitterLog] Ball ${ball.label || ball.type} corrected by ${deviation.toFixed(2)}px, snap=${shouldSnapRender}`)
+        }
 
         if (shouldSnapRender && typeof ball.syncPhysicsToRender === 'function') {
           ball.syncPhysicsToRender()
@@ -556,12 +617,19 @@ export class BilliardsGame {
     this.stateHash = protocolState.stateHash || this.stateHash
     if (room.currentPlayer !== undefined) this.currentPlayer = room.currentPlayer
     if (room.ballInHand !== undefined) this.ballInHand = room.ballInHand
+    if (room.ballInHandZone) this.ballInHandZone = room.ballInHandZone
     if (typeof room.lastShotId === 'string' && room.lastShotId) this.lastAppliedShotId = room.lastShotId
     if (typeof room.lastShotPlayerId === 'string' && room.lastShotPlayerId) this.lastKnownShotPlayerId = room.lastShotPlayerId
     if (typeof room.lastShotProtocol === 'string' && room.lastShotProtocol) this.lastKnownShotProtocol = room.lastShotProtocol
     if (typeof room.lastShotStartedAt === 'number' && room.lastShotStartedAt > 0) this.lastKnownShotStartedAt = room.lastShotStartedAt
     if (typeof room.lastSettledSignature === 'string' && room.lastSettledSignature) this.lastSettledSignature = room.lastSettledSignature
     if (isSettledSync || isAuthoritative) this.awaitingSettledSync = false
+    if (this.ballInHand && this.cueBall?.pocketed) {
+      this.cueBall.pocketed = false
+      this.cueBall.pos = new Vec2(this.ballInHandZone === 'kitchen' ? HEAD_STRING_X : -TABLE_WIDTH / 4, 0)
+      this.cueBall.vel = new Vec2(0, 0)
+      this.cueBall.syncPhysicsToRender?.()
+    }
     this.playerGroups = room.playerGroups || this.playerGroups;
     this.scores = room.scores || this.scores;
     this.isBreakShot = room.isBreakShot !== undefined ? room.isBreakShot : this.isBreakShot;
@@ -593,7 +661,6 @@ export class BilliardsGame {
     this.pendingShotRequest = shotInput
     this.roomPhase = 'RESOLVING'
     this.awaitingShotResult = true
-    this.executeAcceptedShotInput(shotInput)
   }
 
   commitSettledSnapshot() {
@@ -785,6 +852,7 @@ export class BilliardsGame {
   update() {
     const now = Date.now();
     const frameMs = Math.min(80, now - this.lastUpdate);
+    const deltaSeconds = Math.max(0, frameMs) / 1000
     this.lastUpdate = now;
     updateGamePhysics(this, frameMs);
     
@@ -818,7 +886,7 @@ export class BilliardsGame {
         if (++this.placementSyncCounter % 2 === 0) GameClient.sendSync(this.createLivePlacementSnapshot());
     } else this.placementSyncCounter = 0;
 
-    if (GameClient.isMyTurn && this.roomPhase === 'PLAYING' && !this.ballInHand && !this.isMoving() && (this.isDragging || this.hasPointerInput)) {
+    if (GameClient.isMyTurn && this.roomPhase === 'PLAYING' && !this.ballInHand && !this.isTurnLocked && !this.awaitingSettledSync && !this.isMoving() && (this.isDragging || this.hasPointerInput)) {
         if (++this.aimSyncCounter % 2 === 0) GameClient.sendAim({ aimAngle: this.aimAngle, pullDistance: this.isDragging ? this.pullDistance : 0 });
         this.updateUI();
     } else if (this.showRemoteCue) this.updateUI();
@@ -826,9 +894,31 @@ export class BilliardsGame {
 
     this.balls.forEach(ball => {
       if (typeof ball.updateRender === 'function') {
-        ball.updateRender(0.25);
+        ball.updateRender(deltaSeconds);
       }
     });
+
+    if (DEBUG_JITTER) {
+      const maxRenderLag = this.balls.reduce((maxLag, ball) => {
+        const physicsPos = ball.physicsPos || ball.pos
+        const renderPos = ball.renderPos || physicsPos
+        return Math.max(maxLag, Math.hypot(physicsPos.x - renderPos.x, physicsPos.y - renderPos.y))
+      }, 0)
+
+      this.jitterStats = this.jitterStats || {}
+      this.jitterStats.lastRenderLag = maxRenderLag
+
+      const lastPhysicsFrame = this.jitterStats.lastPhysicsFrame
+      if (lastPhysicsFrame) {
+        console.log(
+          `[JitterLog] frame=${lastPhysicsFrame.frameMs.toFixed(2)}ms substeps=${lastPhysicsFrame.substeps} `
+          + `acc=${lastPhysicsFrame.accumulatorBefore.toFixed(2)}->${lastPhysicsFrame.accumulatorAfter.toFixed(2)} `
+          + `pairs=${lastPhysicsFrame.collisionPairs} overlap=${lastPhysicsFrame.maxOverlap.toFixed(3)} `
+          + `renderLag=${maxRenderLag.toFixed(3)}`
+        )
+        this.jitterStats.lastPhysicsFrame = null
+      }
+    }
   }
 
   /**

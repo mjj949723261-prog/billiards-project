@@ -137,10 +137,16 @@ public class GameWebSocketController {
         
         // 2. 将最终校验过的位置广播给全房间，防止各个设备上因为物理引擎浮点数误差产生的“散落感”
         Object authoritativeContent = syncResult.get("broadcastContent");
+        GameMessage outbound = message;
         if (authoritativeContent != null) {
-            message.setContent(authoritativeContent);
+            outbound = GameMessage.builder()
+                    .type(GameMessage.MessageType.SYNC_STATE)
+                    .roomId(message.getRoomId())
+                    .senderId("SYSTEM")
+                    .content(authoritativeContent)
+                    .build();
         }
-        messagingTemplate.convertAndSend("/topic/room/" + message.getRoomId(), message);
+        messagingTemplate.convertAndSend("/topic/room/" + message.getRoomId(), outbound);
     }
 
     /**

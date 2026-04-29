@@ -8,7 +8,7 @@ import {
   RELEASE_FLASH_DURATION,
   TABLE_HEIGHT,
   TABLE_WIDTH,
-} from '../constants.js'
+} from '../constants.js?v=20260429-room-entry-fix'
 import { hasDebugOverlay, isPortraitLayout, shouldRotateGameplayStage } from '../layout/mode.js'
 import { Vec2 } from '../math.js'
 import { GameClient } from '../network/game-client.js'

@@ -7,23 +7,33 @@
 import {
   BALL_BOUNCE,
   BALL_RADIUS,
+  FIXED_TIMESTEP_MS,
+  MAX_PHYSICS_STEPS_PER_FRAME,
   PLAYABLE_AREA_INSET,
   POCKET_RADIUS,
   POCKET_SCORE_EFFECT_DURATION,
   TABLE_HEIGHT,
   TABLE_WIDTH,
   TURN_TIME_LIMIT,
+  VELOCITY_THRESHOLD,
   WALL_BOUNCE,
-} from '../constants.js'
+} from '../constants.js?v=20260429-room-entry-fix'
 import { Vec2 } from '../math.js'
 import { evaluateShot } from './rules.js'
 
-const FIXED_TIMESTEP_MS = 1000 / 120
+const DEBUG_JITTER = typeof window !== 'undefined' && window.location.hash.includes('debug-jitter')
 const BASE_FRAME_MS = 1000 / 60
-const MAX_SUBSTEPS = 5
-const COLLISION_ITERATIONS = 4
-const POSITION_CORRECTION = 0.82
-const POSITION_SLOP = 0.01
+const COLLISION_ITERATIONS = 6
+const POSITION_CORRECTION = 0.68
+const POSITION_SLOP = 0.02
+
+function hasMovingBall(balls) {
+  return balls.some(ball => {
+    if (ball.pocketed) return false
+    const velocity = ball.physicsVel || ball.vel
+    return velocity.length() > VELOCITY_THRESHOLD
+  })
+}
 
 /**
  * 更新单帧的游戏物理状态。
@@ -34,14 +44,26 @@ const POSITION_SLOP = 0.01
  */
 export function updateGamePhysics(game, frameMs = BASE_FRAME_MS) {
   const active = game.balls.filter(ball => !ball.pocketed)
+  const jitterStats = game.jitterStats || (game.jitterStats = {})
+  const accumulatorBefore = typeof game.physicsAccumulatorMs === 'number' ? game.physicsAccumulatorMs : 0
+  const frameBudgetMs = Math.max(0, frameMs)
+  let movingBeforeStep = !!game.wasMoving
+
+  if (game.shotActive && !jitterStats.shotPeakTracking) {
+    jitterStats.shotPeakTracking = true
+    jitterStats.shotPeakOverlap = 0
+  } else if (!game.shotActive && jitterStats.shotPeakTracking) {
+    jitterStats.shotPeakTracking = false
+  }
 
   if (typeof game.physicsAccumulatorMs !== 'number') {
     game.physicsAccumulatorMs = 0
   }
-  game.physicsAccumulatorMs += Math.min(frameMs, FIXED_TIMESTEP_MS * MAX_SUBSTEPS)
+  game.physicsAccumulatorMs += frameBudgetMs
 
   let substeps = 0
-  while (game.physicsAccumulatorMs >= FIXED_TIMESTEP_MS && substeps < MAX_SUBSTEPS) {
+  let settledDuringPhysicsStep = false
+  while (game.physicsAccumulatorMs >= FIXED_TIMESTEP_MS && substeps < MAX_PHYSICS_STEPS_PER_FRAME) {
     const dtScale = FIXED_TIMESTEP_MS / BASE_FRAME_MS
 
     active.forEach(ball => {
@@ -63,13 +85,31 @@ export function updateGamePhysics(game, frameMs = BASE_FRAME_MS) {
 
     game.physicsAccumulatorMs -= FIXED_TIMESTEP_MS
     substeps++
+
+    const movingAfterStep = hasMovingBall(active)
+    if (movingBeforeStep && !movingAfterStep && !game.isGameOver) {
+      settledDuringPhysicsStep = true
+      movingBeforeStep = false
+      game.physicsAccumulatorMs = 0
+      game.evaluateShot()
+      break
+    }
+    movingBeforeStep = movingAfterStep
   }
 
-  if (substeps === MAX_SUBSTEPS && game.physicsAccumulatorMs > FIXED_TIMESTEP_MS) {
-    game.physicsAccumulatorMs = 0
+  if (DEBUG_JITTER) {
+    jitterStats.lastPhysicsFrame = {
+      frameMs,
+      substeps,
+      accumulatorBefore,
+      accumulatorAfter: game.physicsAccumulatorMs,
+      cappedAccumulator: false,
+      collisionPairs: jitterStats.lastCollisionPairs || 0,
+      maxOverlap: jitterStats.shotPeakOverlap || jitterStats.lastMaxOverlap || 0,
+    }
   }
 
-  const deltaSeconds = Math.max(0, frameMs) / 1000
+  const deltaSeconds = frameBudgetMs / 1000
   game.releaseFlash = Math.max(0, game.releaseFlash - deltaSeconds)
 
   // 更新进球得分动画的时间
@@ -83,7 +123,7 @@ export function updateGamePhysics(game, frameMs = BASE_FRAME_MS) {
   }
 
   // 当所有球停止移动时评估本轮结果
-  if (game.wasMoving && !game.isMoving() && !game.isGameOver) {
+  if (!settledDuringPhysicsStep && game.wasMoving && !game.isMoving() && !game.isGameOver) {
     game.evaluateShot()
   }
   game.wasMoving = game.isMoving()
@@ -206,11 +246,20 @@ function handleRailCollisions(game, activeBalls) {
  * @param {Ball[]} activeBalls - 尚未入袋的球列表。
  */
 function handleBallCollisions(game, activeBalls) {
+  let maxOverlap = 0
+  let collisionPairs = 0
+  const orderedBalls = [...activeBalls].sort((first, second) => {
+    const firstKey = `${first.type}:${first.label}`
+    const secondKey = `${second.type}:${second.label}`
+    return firstKey.localeCompare(secondKey)
+  })
+
   for (let iteration = 0; iteration < COLLISION_ITERATIONS; iteration++) {
-    for (let i = 0; i < activeBalls.length; i++) {
-      for (let j = i + 1; j < activeBalls.length; j++) {
-        const first = activeBalls[i]
-        const second = activeBalls[j]
+    let iterationMaxOverlap = 0
+    for (let i = 0; i < orderedBalls.length; i++) {
+      for (let j = i + 1; j < orderedBalls.length; j++) {
+        const first = orderedBalls[i]
+        const second = orderedBalls[j]
         const firstPos = first.physicsPos || first.pos
         const secondPos = second.physicsPos || second.pos
         const firstVel = first.physicsVel || first.vel
@@ -229,6 +278,9 @@ function handleBallCollisions(game, activeBalls) {
 
         const normal = delta.mul(1 / distance)
         const overlap = minDistance - distance
+        collisionPairs++
+        maxOverlap = Math.max(maxOverlap, overlap)
+        iterationMaxOverlap = Math.max(iterationMaxOverlap, overlap)
         const correctionMagnitude = Math.max(0, overlap - POSITION_SLOP) * 0.5 * POSITION_CORRECTION
 
         if (correctionMagnitude > 0) {
@@ -257,14 +309,23 @@ function handleBallCollisions(game, activeBalls) {
 
         if (separation >= 0) continue
 
-        // 仅在第一轮处理速度冲量，后续迭代专注收敛重叠。
-        if (iteration > 0) continue
-
         const impulse = -(1 + BALL_BOUNCE) * separation / 2
         const impulseVector = normal.clone().mul(impulse)
         firstVel.sub(impulseVector)
         secondVel.add(impulseVector)
       }
+    }
+
+    if (DEBUG_JITTER && iterationMaxOverlap > 0) {
+      console.log(`[JitterLog] Collision iteration ${iteration + 1}: maxOverlap=${iterationMaxOverlap.toFixed(3)}px`)
+    }
+  }
+
+  if (game.jitterStats) {
+    game.jitterStats.lastMaxOverlap = maxOverlap
+    game.jitterStats.lastCollisionPairs = collisionPairs
+    if (game.jitterStats.shotPeakTracking) {
+      game.jitterStats.shotPeakOverlap = Math.max(game.jitterStats.shotPeakOverlap || 0, maxOverlap)
     }
   }
 }

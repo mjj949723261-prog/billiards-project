@@ -3,7 +3,7 @@
  * @description 提供计算瞄准引导、球体碰撞射线投射以及库边反弹预测的工具函数。
  */
 
-import { BALL_RADIUS, PLAYABLE_AREA_INSET, TABLE_WIDTH, TABLE_HEIGHT } from '../constants.js'
+import { BALL_RADIUS, PLAYABLE_AREA_INSET, TABLE_WIDTH, TABLE_HEIGHT } from '../constants.js?v=20260429-room-entry-fix'
 import { Vec2 } from '../math.js'
 
 /**

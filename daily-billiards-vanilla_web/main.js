@@ -4,7 +4,7 @@
  * 网络事件编排以及全局状态初始化。
  */
 
-import { bootstrapGame } from './src/game.js'
+import { bootstrapGame } from './src/game.js?v=20260429-room-entry-fix2'
 import { applyLayoutMode } from './src/layout/mode.js'
 import { GameClient } from './src/network/game-client.js'
 import { resolveRoomEntry } from './src/network/session-entry.js'
@@ -20,6 +20,24 @@ import {
 } from './src/ui/overlay-views.js'
 import { bindAuthActions } from './src/ui/auth-controller.js'
 import { bindLobbyActions, renderLobbyProfile } from './src/ui/lobby-controller.js'
+
+const UI_DEBUG_FLAGS = (() => {
+    const hash = window.location?.hash || ''
+    const search = window.location?.search || ''
+    const storageDebug = typeof window.localStorage !== 'undefined'
+        ? window.localStorage.getItem('billiards_debug') || ''
+        : ''
+    const source = `${hash} ${search} ${storageDebug}`.toLowerCase()
+    return {
+        roomFlow: source.includes('debug-room'),
+        syncFlow: source.includes('debug-sync'),
+    }
+})()
+
+function uiDebugLog(channel, ...args) {
+    if (!UI_DEBUG_FLAGS[channel]) return
+    console.log(...args)
+}
 
 /** @global 将 GameClient 挂载到全局窗口对象，方便调试和跨模块访问。 */
 window.GameClient = GameClient;
@@ -121,46 +139,50 @@ function startMatchmaking(requestedRoomId = '') {
 window.handleGameStart = (room) => {
     if (!room) return;
     
-    // 彻底修复：从所有可能的位置提取状态
+    // 统一提取房间对象和消息上下文，避免 WAITING/JOIN 阶段引用未初始化变量。
     const roomObj = room.room || (room.content && room.content.room) || room;
-    let rawStatus = room.status || roomObj.status || (room.content && room.content.status) || '';
+    const roomData = roomObj;
+    const msgType = room._msgType || room.type || '';
+    const rawStatus = room.status || roomObj.status || (room.content && room.content.status) || '';
     const status = rawStatus.toString().toUpperCase();
+    const roomId = roomData.roomId || roomData.id || room.roomId || '';
+    const isActiveRoomStatus = status === 'PLAYING' || status === 'RESOLVING' || status === 'PAUSED';
     
-    console.log('[RoomSync] Received Status:', status);
+    uiDebugLog('roomFlow', '[UI] handleGameStart status', {
+        status,
+        msgType,
+        roomId,
+        currentTurnPlayerId: roomData.currentTurnPlayerId,
+        ballInHand: roomData.ballInHand,
+        ballInHandZone: roomData.ballInHandZone,
+    });
 
     // 获取 URL 参数
     const urlParams = new URLSearchParams(window.location.search);
     const hideTopView = urlParams.get('hideTopView') === '1';
-    
-    const isActiveRoomStatus = status === 'PLAYING' || status === 'RESOLVING' || status === 'PAUSED'
 
     // 核心保护：只有对局相关状态才允许进入游戏画面
     if (!isActiveRoomStatus && !hideTopView) {
-        console.log('[UI] Room is not in PLAYING state. Keeping matchmaking panel visible.');
-        
-    showOverlay();
-        
+        uiDebugLog('roomFlow', '[UI] Keep matchmaking view because room is not active', { status, roomId });
+        updateGameplayRoomChrome();
+        showOverlay();
         showMatchmakingView('已进入房间，正在等待对手。', {
             title: '等待对手加入',
             badge: '已进房',
             footnote: '分享房间号给好友，对方进入后将自动开局。',
-            roomId: roomObj.roomId || roomObj.id || room.roomId || '',
+            roomId,
             state: 'waiting-opponent',
             cancelLabel: '返回大厅',
         });
-        
-        const rid = roomObj.roomId || roomObj.id || room.roomId;
         return;
     }
 
     // 只有状态明确为 PLAYING 时，才允许关闭遮罩并初始化/开始游戏
-    console.log('[UI] Status is PLAYING. Transitioning to Game View.');
+    uiDebugLog('roomFlow', '[UI] Transition to game view', { status, roomId });
     showGameView();
 
     // --- 核心修复：只有在 PLAYING 时才初始化游戏，防止 WAITING 时 Canvas 背景露出 ---
-    const roomData = room.room || (room.content && room.content.room) || room;
     const isPlaying = isActiveRoomStatus;
-    const msgType = room._msgType; // 之前在 GameClient.js 中注入的标记
     const isFreshGameStart = msgType === 'GAME_START';
     const hasRemoteBallState = !!(roomData.ballState);
     const isLocalNewSession = !window.game || (window.game.balls.length <= 1);
@@ -315,7 +337,9 @@ window.handleShotStartAccepted = (payload, senderId) => {
     const isOwnOptimisticShot = senderId === GameClient.playerId
     if (!isOwnOptimisticShot) {
         window.game.executeAcceptedShotInput(shot)
-    } else if (window.game.pendingShotRequest) {
+    } else {
+        window.game.executeAcceptedShotInput(shot)
+        window.game.reconcileAcceptedShot(shot)
         window.game.pendingShotRequest = null
     }
     window.game.updateUI()
@@ -378,6 +402,13 @@ window.handleRoomSnapshot = (payload) => {
  */
 window.handleRemoteStateSync = (stateData) => {
     if (window.game) {
+        uiDebugLog('syncFlow', '[UI] apply remote state sync', {
+            syncKind: stateData?.syncKind || 'unknown',
+            authoritative: stateData?.authoritative === true,
+            ballInHand: stateData?.ballInHand ?? stateData?.room?.ballInHand ?? null,
+            ballInHandZone: stateData?.ballInHandZone || stateData?.room?.ballInHandZone || '',
+            currentTurnPlayerId: stateData?.room?.currentTurnPlayerId || '',
+        });
         const isAuthoritativeSettled = stateData?.authoritative === true && stateData?.syncKind === 'authoritative-settled';
         const localSettledSignature = isAuthoritativeSettled && typeof window.game.createSettledSignature === 'function'
             ? window.game.createSettledSignature()
@@ -511,9 +542,31 @@ window.handleConnectionError = (message) => {
  * @param {string} message - 错误消息内容。
  */
 window.handleRoomError = (message) => {
+    const payload = (message && typeof message === 'object') ? message : null;
+    const errorMessage = payload?.message || message || '加入房间失败';
+    const errorCode = payload?.code || '';
+    const isShotStartRejected = errorCode === 'SHOT_START_REJECTED' || errorMessage.includes('当前不能出杆');
+    const isShotRollback = errorMessage.includes('本杆');
+    const isInGameSoftError = !!window.game && (isShotStartRejected || isShotRollback);
+
+    if (isInGameSoftError) {
+        if (payload?.room) {
+            const room = payload.room;
+            window.game.roomPhase = room.status || 'PLAYING';
+            window.game.turnId = room.turnId ?? window.game.turnId;
+            window.game.stateVersion = room.stateVersion ?? window.game.stateVersion;
+            window.game.shotToken = room.shotToken ?? window.game.shotToken;
+            window.game.stateHash = room.stateHash || window.game.stateHash;
+        }
+        window.game.rollbackToSettledSnapshot(errorMessage);
+        window.game.showRemoteCue = false;
+        window.game.isTurnLocked = false;
+        window.game.updateUI();
+        return;
+    }
+
     GameClient.cancelMatchmaking();
     showLobbyView();
-    const errorMessage = message || '加入房间失败';
     showMatchmakingView(errorMessage, {
         title: '加入失败',
         badge: '异常',
@@ -668,6 +721,6 @@ if (roomEntry.autoJoinRoomId) {
     const finalNick = AuthService.getUser()?.nickname || GameClient.nickname || `玩家${Math.floor(Math.random()*1000)}`;
     
     GameClient.connect(finalNick, () => {
-        console.log('Connecting to room:', targetRoom);
+        uiDebugLog('roomFlow', '[UI] Connecting to room', { roomId: targetRoom });
     }, targetRoom);
 }
