@@ -219,9 +219,18 @@ window.handleGameStart = (room) => {
             window.game.placingCue = roomData.ballInHand;
         }
 
+        if (roomData.lastShotId) window.game.lastAppliedShotId = roomData.lastShotId;
+        if (roomData.lastShotPlayerId) window.game.lastKnownShotPlayerId = roomData.lastShotPlayerId;
+        if (roomData.lastShotProtocol) window.game.lastKnownShotProtocol = roomData.lastShotProtocol;
+        if (roomData.lastShotStartedAt) window.game.lastKnownShotStartedAt = roomData.lastShotStartedAt;
+        if (roomData.lastSettledSignature) window.game.lastSettledSignature = roomData.lastSettledSignature;
+
         if (roomData.ballState) {
             const restoredSnapshot = Array.isArray(roomData.ballState) ? { balls: roomData.ballState } : roomData.ballState;
             window.game.applyGameStateSnapshot(restoredSnapshot);
+            window.game.awaitingSettledSync = roomData.awaitingSettledSync === true
+                ? true
+                : window.game.hasSnapshotMotion(restoredSnapshot);
             window.game.isBreakShot = false;
         }
     }
@@ -284,13 +293,12 @@ window.handleRemoteAim = (data) => {
 
 /**
  * 处理远程击球事件的全局回调。
- * 根据对手的瞄准和力度执行击球逻辑。
- * @param {Object} data - 击球数据（aimAngle, powerRatio）。
+ * 根据对手广播的击球初始条件重放本次出杆。
+ * @param {Object} data - 击球初始条件。
  */
 window.handleRemoteShoot = (data) => {
     if (window.game) {
-        // 执行远程击球逻辑
-        window.game.executeRemoteShoot(data.aimAngle, data.powerRatio);
+        window.game.executeRemoteShoot(data);
     }
 };
 
@@ -370,8 +378,61 @@ window.handleRoomSnapshot = (payload) => {
  */
 window.handleRemoteStateSync = (stateData) => {
     if (window.game) {
+        const isAuthoritativeSettled = stateData?.authoritative === true && stateData?.syncKind === 'authoritative-settled';
+        const localSettledSignature = isAuthoritativeSettled && typeof window.game.createSettledSignature === 'function'
+            ? window.game.createSettledSignature()
+            : null;
+        const remoteSettledSignature = typeof stateData?.lastSettledSignature === 'string' && stateData.lastSettledSignature
+            ? stateData.lastSettledSignature
+            : stateData?.room?.lastSettledSignature;
+
         window.game.applyGameStateSnapshot(stateData);
+
+        if (remoteSettledSignature) {
+            const driftDetected = !!(localSettledSignature && remoteSettledSignature && localSettledSignature !== remoteSettledSignature);
+            window.game.lastSettledSignature = remoteSettledSignature;
+            if (driftDetected) {
+                window.game.isDragging = false;
+                window.game.pullDistance = 0;
+                window.game.showRemoteCue = false;
+                window.game.setStatusMessage('球桌状态已按房间权威结果校正', 2200);
+                window.game.updateUI();
+            }
+        }
     }
+};
+
+/**
+ * 处理服务端拒绝本地 settled 对账的回调。
+ * 这类拒绝是非致命的，说明客户端本地视角已经落后，应继续等待权威状态。
+ * @param {Object} payload - 服务端返回的拒绝信息。
+ */
+window.handleSyncRejected = (payload) => {
+    if (!window.game) return;
+    if (payload?.activeShotId) {
+        window.game.lastAppliedShotId = payload.activeShotId;
+    }
+    if (payload?.room?.lastShotPlayerId) window.game.lastKnownShotPlayerId = payload.room.lastShotPlayerId;
+    if (payload?.room?.lastShotProtocol) window.game.lastKnownShotProtocol = payload.room.lastShotProtocol;
+    if (payload?.room?.lastShotStartedAt) window.game.lastKnownShotStartedAt = payload.room.lastShotStartedAt;
+    if (typeof payload?.room?.lastSettledSignature === 'string' && payload.room.lastSettledSignature) {
+        window.game.lastSettledSignature = payload.room.lastSettledSignature;
+    }
+
+    const authoritativeSnapshot = payload?.authoritativeSnapshot;
+    if (authoritativeSnapshot) {
+        window.game.applyGameStateSnapshot(authoritativeSnapshot);
+    }
+
+    window.game.awaitingSettledSync = payload?.room?.awaitingSettledSync === true;
+    window.game.isDragging = false;
+    window.game.pullDistance = 0;
+    window.game.showRemoteCue = false;
+    window.game.setStatusMessage(
+        authoritativeSnapshot ? '已回补房间权威状态' : '本地对账已过期，正在等待房间权威状态',
+        2200,
+    );
+    window.game.updateUI();
 };
 
 /**
@@ -412,6 +473,7 @@ window.handleTurnSwitch = (data) => {
         window.game.pullDistance = 0;
         window.game.isDragging = false;
         window.game.isTurnLocked = false;
+        window.game.awaitingSettledSync = false;
         
         // 同步计时器 (防止 serverTime 缺失导致倒计时消失)
         if (roomData.turnStartTime) {

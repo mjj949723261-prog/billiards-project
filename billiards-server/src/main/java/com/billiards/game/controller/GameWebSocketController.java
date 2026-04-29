@@ -78,10 +78,17 @@ public class GameWebSocketController {
     public void shoot(@Payload GameMessage message) {
         log.info("房间 {} 击球同步", message.getRoomId());
         
+        // 0. 记录最近一次正式出杆上下文，供重连恢复和后续权威裁决使用
+        Object canonicalContent = roomService.recordShotStart(message.getRoomId(), message.getSenderId(), message.getContent());
+        if (canonicalContent == null) {
+            return;
+        }
+
         // 1. 击球后立即在服务端停止回合倒计时（球体运动期间不计时）
         roomService.stopTurnTimer(message.getRoomId());
         
         // 2. 将击球参数广播给房间内的所有玩家（包括发送者自己，以确移动画触发点对齐）
+        message.setContent(canonicalContent);
         messagingTemplate.convertAndSend("/topic/room/" + message.getRoomId(), message);
     }
 
@@ -117,9 +124,22 @@ public class GameWebSocketController {
         log.debug("收到来自玩家 {} 房间 {} 的物理状态同步请求", message.getSenderId(), message.getRoomId());
         
         // 1. 在服务端业务逻辑中持久化更新并处理回合切换
-        roomService.syncRoomState(message.getRoomId(), message.getSenderId(), message.getContent());
+        Map<String, Object> syncResult = roomService.syncRoomState(message.getRoomId(), message.getSenderId(), message.getContent());
+        if (!Boolean.TRUE.equals(syncResult.get("accepted"))) {
+            messagingTemplate.convertAndSend("/queue/player/" + message.getSenderId(), GameMessage.builder()
+                    .type(GameMessage.MessageType.ERROR)
+                    .roomId(message.getRoomId())
+                    .senderId("SYSTEM")
+                    .content(syncResult)
+                    .build());
+            return;
+        }
         
         // 2. 将最终校验过的位置广播给全房间，防止各个设备上因为物理引擎浮点数误差产生的“散落感”
+        Object authoritativeContent = syncResult.get("broadcastContent");
+        if (authoritativeContent != null) {
+            message.setContent(authoritativeContent);
+        }
         messagingTemplate.convertAndSend("/topic/room/" + message.getRoomId(), message);
     }
 

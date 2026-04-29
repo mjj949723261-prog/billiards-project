@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -117,7 +118,6 @@ public class RoomService {
                 room.setShotToken(newShotToken());
                 room.setBreakShot(true);
                 startTurnTimer(room);
-                startPeriodicSync(room.getRoomId());
                 notifyGameStart(room);
                 sendRoomSnapshot(room, null);
             } else if (room.getStatus() == BilliardsRoom.GameStatus.PAUSED) {
@@ -175,6 +175,69 @@ public class RoomService {
         });
     }
 
+    public synchronized Object recordShotStart(String roomId, String senderId, Object content) {
+        Optional<BilliardsRoom> roomOpt = roomRepository.findById(roomId);
+        if (roomOpt.isEmpty()) return content;
+
+        BilliardsRoom room = roomOpt.get();
+        synchronized (room) {
+            if (senderId != null && !senderId.equals(room.getCurrentTurnPlayerId())) {
+                return null;
+            }
+
+            Map<String, Object> canonicalShot = new LinkedHashMap<>();
+            canonicalShot.put("protocol", "shot-start-v1");
+            canonicalShot.put("senderId", senderId);
+
+            room.setLastShotPlayerId(senderId);
+            if (content instanceof Map<?, ?> contentMap) {
+                Object shotIdObj = contentMap.get("shotId");
+                if (shotIdObj instanceof String shotId && !shotId.isBlank()) {
+                    room.setLastShotId(shotId);
+                    canonicalShot.put("shotId", shotId);
+                }
+
+                Object startedAtObj = contentMap.get("startedAt");
+                if (startedAtObj instanceof Number startedAt) {
+                    room.setLastShotStartedAt(startedAt.longValue());
+                    canonicalShot.put("startedAt", startedAt.longValue());
+                }
+
+                Object protocolObj = contentMap.get("protocol");
+                if (protocolObj instanceof String protocol && !protocol.isBlank()) {
+                    room.setLastShotProtocol(protocol);
+                    canonicalShot.put("protocol", protocol);
+                } else {
+                    room.setLastShotProtocol("shot-start-v1");
+                }
+
+                Object aimAngleObj = contentMap.get("aimAngle");
+                if (aimAngleObj instanceof Number aimAngle) canonicalShot.put("aimAngle", aimAngle.doubleValue());
+
+                Object powerRatioObj = contentMap.get("powerRatio");
+                if (powerRatioObj instanceof Number powerRatio) canonicalShot.put("powerRatio", powerRatio.doubleValue());
+
+                Object cueBallXObj = contentMap.get("cueBallX");
+                if (cueBallXObj instanceof Number cueBallX) canonicalShot.put("cueBallX", cueBallX.doubleValue());
+
+                Object cueBallYObj = contentMap.get("cueBallY");
+                if (cueBallYObj instanceof Number cueBallY) canonicalShot.put("cueBallY", cueBallY.doubleValue());
+
+                Object randomSeedObj = contentMap.get("randomSeed");
+                canonicalShot.put("randomSeed", randomSeedObj);
+            } else {
+                room.setLastShotProtocol("shot-start-v1");
+            }
+
+            room.setAwaitingSettledSync(true);
+            roomRepository.save(room);
+            canonicalShot.put("shotId", room.getLastShotId());
+            canonicalShot.put("startedAt", room.getLastShotStartedAt());
+            canonicalShot.put("protocol", room.getLastShotProtocol());
+            return canonicalShot;
+        }
+    }
+
     public synchronized void processShotEndReport(String roomId, String senderId, Object content) {
         roomRepository.findById(roomId).ifPresent(room -> {
             if (room.getStatus() != BilliardsRoom.GameStatus.RESOLVING) {
@@ -212,34 +275,140 @@ public class RoomService {
         });
     }
 
-    /**
-     * 兼容保留：只允许白球在手阶段的 live 摆放预览和稳定快照恢复。
-     */
-    public synchronized void syncRoomState(String roomId, String senderId, Object content) {
-        roomRepository.findById(roomId).ifPresent(room -> {
+    public synchronized Map<String, Object> syncRoomState(String roomId, String senderId, Object content) {
+        Optional<BilliardsRoom> roomOpt = roomRepository.findById(roomId);
+        if (roomOpt.isEmpty()) return Map.of("accepted", false, "code", "ROOM_NOT_FOUND");
+
+        BilliardsRoom room = roomOpt.get();
+        synchronized (room) {
             if (senderId != null && !senderId.equals(room.getCurrentTurnPlayerId())) {
-                return;
+                return Map.of("accepted", false, "code", "NOT_CURRENT_PLAYER");
             }
 
-            Map<String, Object> contentMap = asMap(content);
-            boolean isLive = asBoolean(contentMap.get("isLive"));
-            boolean ballInHand = asBoolean(contentMap.get("ballInHand"));
-
-            if (isLive && ballInHand) {
-                room.setBallState(content);
-                room.setBallInHand(true);
-                room.setBallInHandZone(asString(contentMap.getOrDefault("ballInHandZone", "table")));
-                roomRepository.save(room);
-                return;
+            boolean isLive = false;
+            boolean isSettledSync = false;
+            String sourceShotId = null;
+            if (content instanceof Map<?, ?> contentMap) {
+                Object isLiveObj = contentMap.get("isLive");
+                if (isLiveObj instanceof Boolean) {
+                    isLive = (Boolean) isLiveObj;
+                }
+                Object syncKindObj = contentMap.get("syncKind");
+                if (syncKindObj instanceof String syncKind) {
+                    isSettledSync = "settled".equals(syncKind);
+                }
+                Object sourceShotIdObj = contentMap.get("sourceShotId");
+                if (sourceShotIdObj instanceof String shotId && !shotId.isBlank()) {
+                    sourceShotId = shotId;
+                }
             }
 
-            if (!isLive && ballInHand) {
-                room.setBallState(content);
-                room.setLastSettledBallState(content);
-                room.setStateHash(asString(contentMap.getOrDefault("stateHash", room.getStateHash())));
-                roomRepository.save(room);
+            if (isSettledSync) {
+                String activeShotId = room.getLastShotId();
+                if (sourceShotId == null || activeShotId == null || !activeShotId.equals(sourceShotId)) {
+                    log.warn("拒绝过期 settled sync, roomId={}, senderId={}, sourceShotId={}, activeShotId={}", roomId, senderId, sourceShotId, activeShotId);
+                    return buildSyncRejectedPayload(room, sourceShotId, activeShotId);
+                }
             }
-        });
+
+            room.setBallState(content);
+
+            if (content instanceof Map<?, ?> contentMap) {
+                try {
+                    Object scores = contentMap.get("scores");
+                    if (scores instanceof Map<?, ?> scoreMap) {
+                        room.setPlayer1Score(((Number) scoreMap.get("1")).intValue());
+                        room.setPlayer2Score(((Number) scoreMap.get("2")).intValue());
+                    }
+                } catch (Exception e) {}
+
+                try {
+                    Object groups = contentMap.get("playerGroups");
+                    if (groups instanceof Map<?, ?> groupMap) {
+                        room.setPlayer1Group((String) groupMap.get("1"));
+                        room.setPlayer2Group((String) groupMap.get("2"));
+                    }
+                } catch (Exception e) {}
+
+                Object currentPlayerIndex = contentMap.get("currentPlayer");
+                if (currentPlayerIndex instanceof Number index) {
+                    int idx = index.intValue() - 1;
+                    if (idx >= 0 && idx < room.getPlayerIds().size()) {
+                        String newPlayerId = room.getPlayerIds().get(idx);
+                        if (!newPlayerId.equals(room.getCurrentTurnPlayerId())) {
+                            room.setCurrentTurnPlayerId(newPlayerId);
+                        }
+                    }
+                }
+
+                Object ballInHand = contentMap.get("ballInHand");
+                if (ballInHand instanceof Boolean) room.setBallInHand((Boolean) ballInHand);
+                Object zone = contentMap.get("ballInHandZone");
+                if (zone instanceof String) room.setBallInHandZone((String) zone);
+
+                Object isFinished = contentMap.get("isFinished");
+                if (Boolean.TRUE.equals(isFinished) && room.getStatus() != BilliardsRoom.GameStatus.FINISHED) {
+                    room.setStatus(BilliardsRoom.GameStatus.FINISHED);
+                    Object winnerIndex = contentMap.get("winner");
+                    if (winnerIndex instanceof Number wIdx) {
+                        handleGameOverStats(room, wIdx.intValue());
+                    }
+                }
+
+                if (sourceShotId != null) {
+                    room.setLastShotId(sourceShotId);
+                }
+
+                Object syncKindObj = contentMap.get("syncKind");
+                if (syncKindObj instanceof String syncKind && "settled".equals(syncKind)) {
+                    room.setAwaitingSettledSync(false);
+                    Object settledAtObj = contentMap.get("settledAt");
+                    if (settledAtObj instanceof Number settledAt) {
+                        room.setLastSettledAt(settledAt.longValue());
+                    } else {
+                        room.setLastSettledAt(System.currentTimeMillis());
+                    }
+                    Object settledSignatureObj = contentMap.get("settledSignature");
+                    if (settledSignatureObj instanceof String settledSignature && !settledSignature.isBlank()) {
+                        room.setLastSettledSignature(settledSignature);
+                    }
+                }
+            }
+
+            roomRepository.save(room);
+
+            if ((isSettledSync || !isLive) && room.getStatus() == BilliardsRoom.GameStatus.PLAYING) {
+                resetTurnTimer(roomId);
+            }
+            return Map.of(
+                    "accepted", true,
+                    "broadcastContent", buildAuthoritativeSyncPayload(room, isSettledSync)
+            );
+        }
+    }
+
+    private Map<String, Object> buildSyncRejectedPayload(BilliardsRoom room, String sourceShotId, String activeShotId) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("accepted", false);
+        payload.put("code", "STALE_SETTLED_SYNC");
+        payload.put("roomId", room.getRoomId());
+        payload.put("sourceShotId", sourceShotId);
+        payload.put("activeShotId", activeShotId);
+        payload.put("room", room);
+        payload.put("authoritativeSnapshot", room.getBallState());
+        payload.put("serverTime", System.currentTimeMillis());
+        return payload;
+    }
+
+    private Map<String, Object> buildAuthoritativeSyncPayload(BilliardsRoom room, boolean isSettledSync) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("authoritative", true);
+        payload.put("syncKind", isSettledSync ? "authoritative-settled" : "authoritative-sync");
+        payload.put("room", room);
+        payload.put("ballState", room.getBallState());
+        payload.put("lastSettledSignature", room.getLastSettledSignature());
+        payload.put("serverTime", System.currentTimeMillis());
+        return payload;
     }
 
     public synchronized void resetTurnTimer(String roomId) {
@@ -570,12 +739,17 @@ public class RoomService {
     private void handleTurnTimeout(String roomId) {
         roomRepository.findById(roomId).ifPresent(room -> {
             synchronized (room) {
+                if (room.getStatus() == BilliardsRoom.GameStatus.RESOLVING) {
+                    rollbackResolvingRoom(room, "本杆结算超时，已回退到上一稳定桌面");
+                    return;
+                }
                 if (room.getPlayerIds().size() < 2 || room.getStatus() != BilliardsRoom.GameStatus.PLAYING) return;
 
                 int currentIndex = room.getPlayerIds().indexOf(room.getCurrentTurnPlayerId());
                 int nextIndex = (currentIndex + 1) % room.getPlayerIds().size();
                 String nextPlayerId = room.getPlayerIds().get(nextIndex);
                 room.setCurrentTurnPlayerId(nextPlayerId);
+                room.setAwaitingSettledSync(false);
                 room.setBallInHand(true);
                 room.setBallInHandZone("table");
                 startTurnTimer(room);

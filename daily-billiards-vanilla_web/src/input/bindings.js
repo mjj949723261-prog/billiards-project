@@ -8,8 +8,6 @@ import {
   BALL_RADIUS,
   HEAD_STRING_X,
   MAX_PULL_DISTANCE,
-  RELEASE_FLASH_DURATION,
-  SHOT_POWER_SCALE,
 } from '../constants.js'
 import { Vec2 } from '../math.js'
 import { GameClient } from '../network/game-client.js'
@@ -21,7 +19,7 @@ import { buildSettledSnapshotPayload } from '../network/shot-state.js'
  * @param {BilliardsGame} game - 游戏实例。
  */
 function syncCuePlacement(game) {
-  GameClient.sendSync(game.getGameStateSnapshot())
+  GameClient.sendSync(game.createLivePlacementSnapshot())
 }
 
 /**
@@ -39,6 +37,7 @@ export function bindGameInput(game) {
   const start = (e) => {
     // 联机拦截：如果不是我的回合或回合已锁定，则不处理输入
     if ((!GameClient.isMyTurn || game.isTurnLocked || game.roomPhase !== 'PLAYING') && !debugAlwaysDrag) return;
+    if (game.awaitingSettledSync && !debugAlwaysDrag) return;
 
     game.audio.unlock()
     game.updatePos(e.touches ? e.touches[0] : e, game.ballInHand ? 'placement' : 'aim')
@@ -69,6 +68,7 @@ export function bindGameInput(game) {
    */
   const move = (e) => {
     if ((!GameClient.isMyTurn || game.roomPhase !== 'PLAYING') && !debugAlwaysDrag) return;
+    if (game.awaitingSettledSync && !debugAlwaysDrag) return;
 
     game.updatePos(e.touches ? e.touches[0] : e, game.ballInHand && game.placingCue ? 'placement' : 'aim')
     
@@ -115,6 +115,7 @@ export function bindGameInput(game) {
    */
   const end = () => {
     if ((!GameClient.isMyTurn || (game.roomPhase !== 'PLAYING' && !game.ballInHand)) && !debugAlwaysDrag) return;
+    if (game.awaitingSettledSync && !debugAlwaysDrag) return;
 
     // 结束白球摆放
     if (game.ballInHand && game.placingCue) {
@@ -126,7 +127,7 @@ export function bindGameInput(game) {
         game.requiresKitchenBreakDirection = kitchenPlacement
         game.setStatusMessage(`玩家${game.currentPlayer}已摆好白球`, 1200)
         game.updateUI()
-        syncCuePlacement(game)
+        GameClient.sendSync(game.createSettledSyncSnapshot())
       } else {
         game.setStatusMessage('白球摆放位置无效', 1600)
       }
@@ -138,12 +139,12 @@ export function bindGameInput(game) {
       const powerRatio = Math.max(0, Math.min(1, game.pullDistance / MAX_PULL_DISTANCE))
       if (powerRatio > 0.08) {
         game.showRemoteCue = false
-        const aimDir = new Vec2(Math.cos(game.aimAngle), Math.sin(game.aimAngle))
         
         // 特殊规则：检查开球方向是否合法（如果需要限制在开球区内向前方击球）
-        const breakGuide = game.requiresKitchenBreakDirection ? game.getAimGuide(aimDir) : null
+        const breakAimDir = game.requiresKitchenBreakDirection ? new Vec2(Math.cos(game.aimAngle), Math.sin(game.aimAngle)) : null
+        const breakGuide = breakAimDir ? game.getAimGuide(breakAimDir) : null
         const crossesHeadString = !breakGuide || breakGuide.hitPoint.x > HEAD_STRING_X + BALL_RADIUS
-        if (game.requiresKitchenBreakDirection && (!crossesHeadString || aimDir.x <= 0.08)) {
+        if (game.requiresKitchenBreakDirection && (!crossesHeadString || breakAimDir.x <= 0.08)) {
           game.isDragging = false
           game.pullDistance = 0
           game.setStatusMessage('开球方向无效', 1800)

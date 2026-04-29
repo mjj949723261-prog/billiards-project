@@ -37,6 +37,12 @@ export const BALL_BOUNCE = 0.96;
 /** @type {number} 球被视为停止运动的最小速度阈值。 */
 export const VELOCITY_THRESHOLD = 0.01;
 
+/** @type {number} 固定步长物理模拟的每步毫秒数。 */
+export const FIXED_TIMESTEP_MS = 1000 / 120;
+
+/** @type {number} 单帧最多允许补跑的物理步数，避免低帧率时螺旋卡死。 */
+export const MAX_PHYSICS_STEPS_PER_FRAME = 8;
+
 /** @type {number} 每回合的限制时间（秒）。 */
 export const TURN_TIME_LIMIT = 45;
 

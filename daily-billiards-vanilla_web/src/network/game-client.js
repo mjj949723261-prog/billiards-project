@@ -380,7 +380,11 @@ export const GameClient = {
                 }
                 break;
             case 'ERROR':
-                if (window.handleRoomError) {
+                if (msg.content && typeof msg.content === 'object' && msg.content.code === 'STALE_SETTLED_SYNC') {
+                    if (window.handleSyncRejected) {
+                        window.handleSyncRejected(msg.content);
+                    }
+                } else if (window.handleRoomError) {
                     window.handleRoomError(msg.content);
                 }
                 break;

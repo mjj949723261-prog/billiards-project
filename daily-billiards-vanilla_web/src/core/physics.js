@@ -76,12 +76,6 @@ export function updateGamePhysics(game, frameMs = BASE_FRAME_MS) {
   game.scorePocketEffects = game.scorePocketEffects
     .map(effect => ({ ...effect, age: effect.age + deltaSeconds }))
     .filter(effect => effect.age < effect.duration)
-
-  game.updateTimerUI()
-  const statusNode = document.getElementById('status')
-  if (statusNode) {
-    statusNode.innerText = game.getStatusText()
-  }
   
   // 时间耗尽逻辑
   if (game.timeLeft <= 0 && !game.isMoving()) {
