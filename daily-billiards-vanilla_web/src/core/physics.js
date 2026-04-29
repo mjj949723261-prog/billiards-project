@@ -20,12 +20,14 @@ import {
 } from '../constants.js?v=20260429-room-entry-fix'
 import { Vec2 } from '../math.js'
 import { evaluateShot } from './rules.js'
+import { isBallCapturedByPocket } from './pocket-geometry.js'
 
 const DEBUG_JITTER = typeof window !== 'undefined' && window.location.hash.includes('debug-jitter')
 const BASE_FRAME_MS = 1000 / 60
 const COLLISION_ITERATIONS = 6
 const POSITION_CORRECTION = 0.68
 const POSITION_SLOP = 0.02
+const COLLISION_EPSILON = 1e-6
 
 function hasMovingBall(balls) {
   return balls.some(ball => {
@@ -33,6 +35,95 @@ function hasMovingBall(balls) {
     const velocity = ball.physicsVel || ball.vel
     return velocity.length() > VELOCITY_THRESHOLD
   })
+}
+
+function recordBallCollision(game, first, second, separation) {
+  if (game.shotActive && !game.shotState.firstContact) {
+    if (first === game.cueBall && second !== game.cueBall) game.shotState.firstContact = second
+    if (second === game.cueBall && first !== game.cueBall) game.shotState.firstContact = first
+  }
+
+  game.audio.playBallCollision(Math.min(1, Math.abs(separation) / 14))
+  if (Math.abs(separation) > 3) {
+    const firstPos = first.physicsPos || first.pos
+    const secondPos = second.physicsPos || second.pos
+    const midPoint = firstPos.clone().add(secondPos).mul(0.5)
+    game.collisionEffects.push({ pos: midPoint, age: 0, type: 'ball' })
+  }
+}
+
+function findEarliestCueBallCollision(game, activeBalls, dtScale) {
+  if (!game.shotActive || game.shotState.firstContact || !game.cueBall || game.cueBall.pocketed) return null
+
+  const cueBall = game.cueBall
+  const cuePos = cueBall.physicsPos || cueBall.pos
+  const cueVel = cueBall.physicsVel || cueBall.vel
+  const minDistance = BALL_RADIUS * 2
+  let earliest = null
+
+  activeBalls.forEach(ball => {
+    if (ball === cueBall || ball.pocketed) return
+
+    const ballPos = ball.physicsPos || ball.pos
+    const ballVel = ball.physicsVel || ball.vel
+    const delta = ballPos.clone().sub(cuePos)
+    const relativeVelocity = ballVel.clone().sub(cueVel)
+    const a = relativeVelocity.dot(relativeVelocity)
+    const b = 2 * delta.dot(relativeVelocity)
+    const c = delta.dot(delta) - minDistance * minDistance
+
+    if (c <= 0 || a <= COLLISION_EPSILON) return
+
+    const discriminant = b * b - 4 * a * c
+    if (discriminant < 0) return
+
+    const sqrtDiscriminant = Math.sqrt(discriminant)
+    const impactTime = (-b - sqrtDiscriminant) / (2 * a)
+    if (impactTime < -COLLISION_EPSILON || impactTime > dtScale + COLLISION_EPSILON) return
+
+    if (!earliest || impactTime < earliest.time) {
+      earliest = { time: Math.max(0, impactTime), target: ball }
+    }
+  })
+
+  return earliest
+}
+
+function resolveExactBallCollision(game, first, second) {
+  const firstPos = first.physicsPos || first.pos
+  const secondPos = second.physicsPos || second.pos
+  const firstVel = first.physicsVel || first.vel
+  const secondVel = second.physicsVel || second.vel
+  const delta = secondPos.clone().sub(firstPos)
+  let distance = delta.length()
+  const minDistance = BALL_RADIUS * 2
+
+  if (distance < COLLISION_EPSILON) {
+    delta.x = 1
+    delta.y = 0
+    distance = 1
+  }
+
+  const normal = delta.mul(1 / distance)
+  if (Math.abs(distance - minDistance) > COLLISION_EPSILON) {
+    const midpoint = firstPos.clone().add(secondPos).mul(0.5)
+    const separationOffset = normal.clone().mul(minDistance * 0.5)
+    firstPos.x = midpoint.x - separationOffset.x
+    firstPos.y = midpoint.y - separationOffset.y
+    secondPos.x = midpoint.x + separationOffset.x
+    secondPos.y = midpoint.y + separationOffset.y
+  }
+
+  const relativeVelocity = secondVel.clone().sub(firstVel)
+  const separation = relativeVelocity.dot(normal)
+  recordBallCollision(game, first, second, separation)
+
+  if (separation >= 0) return
+
+  const impulse = -(1 + BALL_BOUNCE) * separation / 2
+  const impulseVector = normal.clone().mul(impulse)
+  firstVel.sub(impulseVector)
+  secondVel.add(impulseVector)
 }
 
 /**
@@ -65,10 +156,31 @@ export function updateGamePhysics(game, frameMs = BASE_FRAME_MS) {
   let settledDuringPhysicsStep = false
   while (game.physicsAccumulatorMs >= FIXED_TIMESTEP_MS && substeps < MAX_PHYSICS_STEPS_PER_FRAME) {
     const dtScale = FIXED_TIMESTEP_MS / BASE_FRAME_MS
+    const cueCollision = findEarliestCueBallCollision(game, active, dtScale)
+    let renderSnapTargets = null
 
-    active.forEach(ball => {
-      ball.update(dtScale)
-    })
+    if (cueCollision) {
+      if (cueCollision.time > 0) {
+        active.forEach(ball => {
+          ball.update(cueCollision.time)
+        })
+      }
+
+      resolveExactBallCollision(game, game.cueBall, cueCollision.target)
+
+      const remainingTime = dtScale - cueCollision.time
+      if (remainingTime > 0) {
+        active.forEach(ball => {
+          ball.update(remainingTime)
+        })
+      }
+
+      renderSnapTargets = [game.cueBall, cueCollision.target]
+    } else {
+      active.forEach(ball => {
+        ball.update(dtScale)
+      })
+    }
 
     handleRailCollisions(game, active)
     handleBallCollisions(game, active)
@@ -76,12 +188,18 @@ export function updateGamePhysics(game, frameMs = BASE_FRAME_MS) {
     // 检查进球
     active.forEach(ball => {
       if (ball.pocketed) return
-      game.pockets.forEach(pocket => {
-        if (Vec2.distance(ball.physicsPos || ball.pos, pocket) < POCKET_RADIUS) {
+      game.pockets.forEach((pocket, pocketIndex) => {
+        if (isBallCapturedByPocket(ball.physicsPos || ball.pos, pocket, pocketIndex)) {
           onBallPocketed(game, ball, pocket)
         }
       })
     })
+
+    if (renderSnapTargets) {
+      renderSnapTargets.forEach(ball => {
+        ball?.syncPhysicsToRender?.()
+      })
+    }
 
     game.physicsAccumulatorMs -= FIXED_TIMESTEP_MS
     substeps++
@@ -111,6 +229,9 @@ export function updateGamePhysics(game, frameMs = BASE_FRAME_MS) {
 
   const deltaSeconds = frameBudgetMs / 1000
   game.releaseFlash = Math.max(0, game.releaseFlash - deltaSeconds)
+  game.balls.forEach(ball => {
+    ball.advancePocketAnimation?.(deltaSeconds)
+  })
 
   // 更新进球得分动画的时间
   game.scorePocketEffects = game.scorePocketEffects
@@ -142,6 +263,12 @@ export function onBallPocketed(game, ball, pocketPos) {
   ball.pocketed = true
   ball.vel = new Vec2(0, 0)
   ball.lastPocketPos = pocketPos ? pocketPos.clone() : null
+  if (pocketPos && typeof ball.startPocketAnimation === 'function') {
+    ball.startPocketAnimation(pocketPos)
+  }
+  if (pocketPos) {
+    spawnPocketScoreEffect(game, pocketPos)
+  }
   game.audio.playPocket()
 
   // 处理母球落袋
@@ -160,16 +287,6 @@ export function onBallPocketed(game, ball, pocketPos) {
     return
   }
 
-  // 计算合法进球效果
-  const currentGroup = game.playerGroups[game.currentPlayer]
-  const legalFirstTarget = game.getLegalFirstTargetType()
-  const isOpenTableScoring = !currentGroup && ball.type !== 'eight'
-  const isGroupedLegalScore = !!currentGroup && ball.type === legalFirstTarget
-  
-  if (pocketPos && (isOpenTableScoring || isGroupedLegalScore)) {
-    spawnPocketScoreEffect(game, pocketPos)
-  }
-  
   game.shotState.pocketedBalls.push(ball)
   game.updateUI()
 }
@@ -181,18 +298,24 @@ export function onBallPocketed(game, ball, pocketPos) {
  */
 function handleRailCollisions(game, activeBalls) {
   const RAIL_FRICTION = 0.96; // 库边切向摩擦力：使沿库边滑行的球自然减速
+  const pocketProximity = POCKET_RADIUS * 1.35
   activeBalls.forEach(ball => {
     const pos = ball.physicsPos || ball.pos
     const vel = ball.physicsVel || ball.vel
     const halfWidth = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET
     const halfHeight = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET
     
-    // 检查是否靠近球袋，避免球袋处产生错误的库边碰撞
-    const isNearPocket = game.pockets.some(p => Vec2.distance(pos, p) < POCKET_RADIUS * 1.2)
+    const nearTopLeftPocket = game.pockets[0] && Vec2.distance(pos, game.pockets[0]) < pocketProximity
+    const nearTopMiddlePocket = game.pockets[1] && Vec2.distance(pos, game.pockets[1]) < pocketProximity
+    const nearTopRightPocket = game.pockets[2] && Vec2.distance(pos, game.pockets[2]) < pocketProximity
+    const nearBottomLeftPocket = game.pockets[3] && Vec2.distance(pos, game.pockets[3]) < pocketProximity
+    const nearBottomMiddlePocket = game.pockets[4] && Vec2.distance(pos, game.pockets[4]) < pocketProximity
+    const nearBottomRightPocket = game.pockets[5] && Vec2.distance(pos, game.pockets[5]) < pocketProximity
     
     // 左右库边碰撞检测
     if (pos.x < -halfWidth) {
-      if (!isNearPocket || Math.abs(pos.y) > POCKET_RADIUS) {
+      const enteringLeftPocket = nearTopLeftPocket || nearBottomLeftPocket
+      if (!enteringLeftPocket) {
           const impact = Math.abs(vel.x)
           pos.x = -halfWidth
           vel.x *= -WALL_BOUNCE
@@ -203,7 +326,8 @@ function handleRailCollisions(game, activeBalls) {
       }
     }
     if (pos.x > halfWidth) {
-      if (!isNearPocket || Math.abs(pos.y) > POCKET_RADIUS) {
+      const enteringRightPocket = nearTopRightPocket || nearBottomRightPocket
+      if (!enteringRightPocket) {
           const impact = Math.abs(vel.x)
           pos.x = halfWidth
           vel.x *= -WALL_BOUNCE
@@ -216,7 +340,8 @@ function handleRailCollisions(game, activeBalls) {
 
     // 上下库边碰撞检测
     if (pos.y < -halfHeight) {
-      if (!isNearPocket || (Math.abs(pos.x) > POCKET_RADIUS && Math.abs(pos.x - TABLE_WIDTH/2) > POCKET_RADIUS && Math.abs(pos.x + TABLE_WIDTH/2) > POCKET_RADIUS)) {
+      const enteringTopPocket = nearTopLeftPocket || nearTopMiddlePocket || nearTopRightPocket
+      if (!enteringTopPocket) {
           const impact = Math.abs(vel.y)
           pos.y = -halfHeight
           vel.y *= -WALL_BOUNCE
@@ -227,7 +352,8 @@ function handleRailCollisions(game, activeBalls) {
       }
     }
     if (pos.y > halfHeight) {
-      if (!isNearPocket || (Math.abs(pos.x) > POCKET_RADIUS && Math.abs(pos.x - TABLE_WIDTH/2) > POCKET_RADIUS && Math.abs(pos.x + TABLE_WIDTH/2) > POCKET_RADIUS)) {
+      const enteringBottomPocket = nearBottomLeftPocket || nearBottomMiddlePocket || nearBottomRightPocket
+      if (!enteringBottomPocket) {
           const impact = Math.abs(vel.y)
           pos.y = halfHeight
           vel.y *= -WALL_BOUNCE
@@ -292,20 +418,7 @@ function handleBallCollisions(game, activeBalls) {
         const relativeVelocity = secondVel.clone().sub(firstVel)
         const separation = relativeVelocity.dot(normal)
 
-        if (iteration === 0) {
-          // 记录击球首碰结果（用于规则判定）
-          if (game.shotActive && !game.shotState.firstContact) {
-            if (first === game.cueBall && second !== game.cueBall) game.shotState.firstContact = second
-            if (second === game.cueBall && first !== game.cueBall) game.shotState.firstContact = first
-          }
-
-          // 音效与视觉反馈
-          game.audio.playBallCollision(Math.min(1, Math.abs(separation) / 14))
-          if (Math.abs(separation) > 3) {
-            const midPoint = firstPos.clone().add(secondPos).mul(0.5)
-            game.collisionEffects.push({ pos: midPoint, age: 0, type: 'ball' })
-          }
-        }
+        if (iteration === 0) recordBallCollision(game, first, second, separation)
 
         if (separation >= 0) continue
 

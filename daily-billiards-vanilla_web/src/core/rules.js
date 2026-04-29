@@ -37,6 +37,7 @@ export function switchTurn(game, withBallInHand = false, ballInHandZone = 'table
   game.isBreakShot = false
   if (withBallInHand) {
     game.cueBall.pocketed = false
+    game.cueBall.clearPocketAnimation?.()
     game.cueBall.pos = new Vec2(game.ballInHandZone === 'kitchen' ? HEAD_STRING_X : -TABLE_WIDTH / 4, 0)
     game.cueBall.vel = new Vec2(0, 0)
     game.lastValidCuePosition = game.cueBall.pos.clone()

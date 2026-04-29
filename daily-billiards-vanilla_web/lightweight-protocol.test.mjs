@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { Vec2 } from './src/math.js'
 import { Ball } from './src/entities/ball.js'
+import { getPocketCaptureProfile, getPocketMouthCenters, isBallCapturedByPocket } from './src/core/pocket-geometry.js'
+import { getPocketVisualCenters } from './src/render/table-renderer.js'
 import { 
   normalizeBallStateFromBalls, 
   buildBallStateHash, 
@@ -180,4 +182,263 @@ test('collision iterations keep resolving velocity for balls that are still over
   assert.ok(first.vel.x < 0, `expected first ball to reverse, got ${first.vel.x}`)
   assert.ok(second.vel.x > 0, `expected second ball to move forward, got ${second.vel.x}`)
   assert.equal(game.shotState.firstContact, second)
+})
+
+test('cue-ball first contact resolves at the time of impact instead of leaving overlap behind', async () => {
+  globalThis.document = { getElementById: () => null }
+  const { updateGamePhysics } = await import(`./src/core/physics.js?case=cue-first-contact-${Date.now()}`)
+  const cue = new Ball(0, 0, '#fff', 'cue', 'cue')
+  const target = new Ball(29, 0, '#f00', 'solid', '1')
+
+  cue.vel = new Vec2(4.5, 0)
+
+  const game = {
+    balls: [cue, target],
+    cueBall: cue,
+    pockets: [],
+    physicsAccumulatorMs: 1000 / 120,
+    scorePocketEffects: [],
+    releaseFlash: 0,
+    timeLeft: 10,
+    wasMoving: true,
+    isGameOver: false,
+    shotActive: true,
+    shotState: { firstContact: null, railContacts: 0, pocketedBalls: [], cuePocketed: false, eightPocketed: false },
+    audio: { playBallCollision() {}, playRailHit() {} },
+    collisionEffects: [],
+    updateTimerUI() {},
+    getStatusText() { return '' },
+    isMoving() {
+      return this.balls.some(ball => !ball.pocketed && ball.vel.length() > 0.01)
+    },
+    evaluateShot() {},
+  }
+
+  updateGamePhysics(game, 0)
+
+  assert.ok(target.vel.x > 0, `expected target ball to start moving, got ${target.vel.x}`)
+  assert.ok(target.pos.x - cue.pos.x >= 28, `expected balls to be separated after first contact, got distance ${target.pos.x - cue.pos.x}`)
+  assert.ok(target.pos.x > 30, `expected target ball to advance using remaining time after impact, got ${target.pos.x}`)
+  assert.equal(game.shotState.firstContact, target)
+})
+
+test('cue-ball first contact snaps cue and target render positions to the resolved physics positions', async () => {
+  globalThis.document = { getElementById: () => null }
+  const { updateGamePhysics } = await import(`./src/core/physics.js?case=cue-first-contact-render-${Date.now()}`)
+  const cue = new Ball(0, 0, '#fff', 'cue', 'cue')
+  const target = new Ball(29, 0, '#f00', 'solid', '1')
+
+  cue.vel = new Vec2(4.5, 0)
+
+  const game = {
+    balls: [cue, target],
+    cueBall: cue,
+    pockets: [],
+    physicsAccumulatorMs: 1000 / 120,
+    scorePocketEffects: [],
+    releaseFlash: 0,
+    timeLeft: 10,
+    wasMoving: true,
+    isGameOver: false,
+    shotActive: true,
+    shotState: { firstContact: null, railContacts: 0, pocketedBalls: [], cuePocketed: false, eightPocketed: false },
+    audio: { playBallCollision() {}, playRailHit() {} },
+    collisionEffects: [],
+    updateTimerUI() {},
+    getStatusText() { return '' },
+    isMoving() {
+      return this.balls.some(ball => !ball.pocketed && ball.vel.length() > 0.01)
+    },
+    evaluateShot() {},
+  }
+
+  updateGamePhysics(game, 0)
+
+  assert.equal(cue.renderPos.x, cue.pos.x)
+  assert.equal(cue.renderPos.y, cue.pos.y)
+  assert.equal(target.renderPos.x, target.pos.x)
+  assert.equal(target.renderPos.y, target.pos.y)
+})
+
+test('balls that are only near the pocket lip do not pocket until they travel deeper into the pocket', async () => {
+  globalThis.document = { getElementById: () => null }
+  const { updateGamePhysics } = await import(`./src/core/physics.js?case=pocket-lip-${Date.now()}`)
+  const mouth = getPocketMouthCenters()[1]
+  const pocket = new Vec2(0, -189)
+  const pockets = getPocketVisualCenters()
+
+  const createGame = (ball) => ({
+    balls: [ball],
+    cueBall: ball,
+    pockets,
+    currentPlayer: 1,
+    playerGroups: { 1: null, 2: null },
+    physicsAccumulatorMs: 1000 / 120,
+    scorePocketEffects: [],
+    releaseFlash: 0,
+    timeLeft: 10,
+    wasMoving: false,
+    isGameOver: false,
+    shotActive: false,
+    shotState: { firstContact: null, railContacts: 0, pocketedBalls: [], cuePocketed: false, eightPocketed: false },
+    audio: { playBallCollision() {}, playRailHit() {}, playPocket() {} },
+    collisionEffects: [],
+    updateTimerUI() {},
+    updateUI() {},
+    setStatusMessage() {},
+    getStatusText() { return '' },
+    getLegalFirstTargetType() { return 'solid' },
+    isMoving() {
+      return this.balls.some(ball => !ball.pocketed && ball.vel.length() > 0.01)
+    },
+    evaluateShot() {},
+  })
+
+  const nearLipBall = new Ball(mouth.x, mouth.y - 1, '#f00', 'solid', '1')
+  const deepBall = new Ball(mouth.x, mouth.y - 10, '#00f', 'solid', '2')
+
+  updateGamePhysics(createGame(nearLipBall), 0)
+  updateGamePhysics(createGame(deepBall), 0)
+
+  assert.equal(nearLipBall.pocketed, false, 'expected a ball near the pocket lip to stay on the table')
+  assert.equal(deepBall.pocketed, true, 'expected a deeper ball to still pocket')
+})
+
+test('pocket capture geometry requires crossing the mouth depth instead of only entering the radius', () => {
+  const mouth = getPocketMouthCenters()[1]
+  const pocket = new Vec2(0, -189)
+  const nearLipPos = new Vec2(mouth.x, mouth.y - 1)
+  const shallowSidePos = new Vec2(mouth.x, mouth.y - 5)
+  const deepPos = new Vec2(mouth.x, mouth.y - 10)
+
+  assert.equal(isBallCapturedByPocket(nearLipPos, pocket, 1), false)
+  assert.equal(isBallCapturedByPocket(shallowSidePos, pocket, 1), false)
+  assert.equal(isBallCapturedByPocket(deepPos, pocket, 1), true)
+})
+
+test('pocket capture geometry accepts balls that travel through the pocket jaw corridor before reaching the center', () => {
+  const pocket = new Vec2(-375, -176)
+  const profile = getPocketCaptureProfile(pocket, 0)
+  const jawCorridorPos = profile.mouth
+    .clone()
+    .add(profile.axis.clone().mul(profile.mouthDepth + 2))
+    .add(profile.tangent.clone().mul(profile.mouthHalfWidth - 1))
+
+  assert.equal(isBallCapturedByPocket(jawCorridorPos, pocket, 0), true)
+})
+
+test('corner-pocket approach is not bounced back by rail collisions before pocket capture', async () => {
+  globalThis.document = { getElementById: () => null }
+  const { updateGamePhysics } = await import(`./src/core/physics.js?case=corner-pocket-rail-${Date.now()}`)
+  const pockets = getPocketVisualCenters()
+  const cornerPocket = pockets[0]
+  const profile = getPocketCaptureProfile(cornerPocket, 0)
+  const ball = new Ball(profile.mouth.x - 5, profile.mouth.y - 6, '#f00', 'solid', '1')
+  ball.vel = new Vec2(-0.8, -0.8)
+
+  const game = {
+    balls: [ball],
+    cueBall: ball,
+    pockets,
+    currentPlayer: 1,
+    playerGroups: { 1: null, 2: null },
+    physicsAccumulatorMs: 1000 / 120,
+    scorePocketEffects: [],
+    releaseFlash: 0,
+    timeLeft: 10,
+    wasMoving: true,
+    isGameOver: false,
+    shotActive: false,
+    shotState: { firstContact: null, railContacts: 0, pocketedBalls: [], cuePocketed: false, eightPocketed: false },
+    audio: { playBallCollision() {}, playRailHit() {}, playPocket() {} },
+    collisionEffects: [],
+    updateTimerUI() {},
+    updateUI() {},
+    setStatusMessage() {},
+    getStatusText() { return '' },
+    getLegalFirstTargetType() { return 'solid' },
+    isMoving() {
+      return this.balls.some(currentBall => !currentBall.pocketed && currentBall.vel.length() > 0.01)
+    },
+    evaluateShot() {},
+  }
+
+  updateGamePhysics(game, 0)
+
+  assert.equal(ball.pocketed, true, 'expected corner-pocket approach to pocket instead of bouncing back')
+})
+
+test('pocketed balls keep a short visible pocket animation instead of disappearing immediately', async () => {
+  globalThis.document = { getElementById: () => null }
+  const { onBallPocketed, updateGamePhysics } = await import(`./src/core/physics.js?case=pocket-animation-${Date.now()}`)
+  const ball = new Ball(0, 0, '#fff', 'cue', 'cue')
+  const pocket = new Vec2(0, -189)
+  const game = {
+    balls: [ball],
+    cueBall: ball,
+    pockets: [pocket],
+    currentPlayer: 1,
+    playerGroups: { 1: null, 2: null },
+    physicsAccumulatorMs: 0,
+    scorePocketEffects: [],
+    releaseFlash: 0,
+    timeLeft: 10,
+    wasMoving: false,
+    isGameOver: false,
+    isBreakShot: false,
+    shotActive: false,
+    shotState: { firstContact: null, railContacts: 0, pocketedBalls: [], cuePocketed: false, eightPocketed: false },
+    audio: { playBallCollision() {}, playRailHit() {}, playPocket() {} },
+    collisionEffects: [],
+    updateTimerUI() {},
+    updateUI() {},
+    setStatusMessage() {},
+    getStatusText() { return '' },
+    getLegalFirstTargetType() { return 'solid' },
+    isMoving() { return false },
+    evaluateShot() {},
+  }
+
+  onBallPocketed(game, ball, pocket)
+
+  assert.equal(ball.pocketed, true)
+  assert.equal(ball.isPocketAnimationVisible(), true)
+
+  updateGamePhysics(game, 80)
+
+  assert.equal(ball.isPocketAnimationVisible(), true)
+  assert.ok(ball.renderPocketAlpha < 1 && ball.renderPocketAlpha > 0)
+  assert.ok(ball.renderPocketScale < 1 && ball.renderPocketScale > 0.2)
+})
+
+test('all pocketed balls trigger the shared pocket fireworks effect', async () => {
+  globalThis.document = { getElementById: () => null }
+  const { onBallPocketed } = await import(`./src/core/physics.js?case=shared-pocket-effect-${Date.now()}`)
+  const cueBall = new Ball(0, 0, '#fff', 'cue', 'cue')
+  const objectBall = new Ball(10, 0, '#f00', 'solid', '1')
+  const pocket = new Vec2(0, -189)
+
+  const createGame = () => ({
+    balls: [cueBall, objectBall],
+    cueBall,
+    pockets: [pocket],
+    currentPlayer: 1,
+    playerGroups: { 1: null, 2: null },
+    scorePocketEffects: [],
+    shotState: { firstContact: null, railContacts: 0, pocketedBalls: [], cuePocketed: false, eightPocketed: false },
+    isBreakShot: false,
+    audio: { playBallCollision() {}, playRailHit() {}, playPocket() {} },
+    collisionEffects: [],
+    updateUI() {},
+    setStatusMessage() {},
+    getLegalFirstTargetType() { return 'solid' },
+  })
+
+  const cueGame = createGame()
+  onBallPocketed(cueGame, cueBall, pocket)
+  assert.equal(cueGame.scorePocketEffects.length, 1)
+
+  const objectGame = createGame()
+  onBallPocketed(objectGame, objectBall, pocket)
+  assert.equal(objectGame.scorePocketEffects.length, 1)
 })

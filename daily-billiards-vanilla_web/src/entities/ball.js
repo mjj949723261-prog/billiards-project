@@ -157,6 +157,12 @@ export class Ball {
     this.renderPos = this.physicsPos.clone();
     /** @type {Float32Array} 渲染层旋转矩阵。 */
     this.renderRot = new Float32Array(this.physicsRot);
+    /** @type {number} 渲染层缩放，用于入袋下坠动画。 */
+    this.renderPocketScale = 1;
+    /** @type {number} 渲染层透明度，用于入袋下坠动画。 */
+    this.renderPocketAlpha = 1;
+    /** @type {Object|null} 入袋过渡动画状态。 */
+    this.pocketAnimation = null;
 
     Object.defineProperties(this, {
       pos: {
@@ -230,13 +236,26 @@ export class Ball {
     const k = 18.0;
     const smoothFactor = 1.0 - Math.exp(-k * Math.max(0, dt));
 
+    if (this.pocketAnimation?.active) {
+      this.renderPos.x = this.pocketAnimation.renderPos.x
+      this.renderPos.y = this.pocketAnimation.renderPos.y
+      this.renderPocketScale = this.pocketAnimation.scale
+      this.renderPocketAlpha = this.pocketAnimation.alpha
+      this.renderRot.set(this.physicsRot)
+      return
+    }
+
     if (this.pocketed) {
       this.renderPos.x = this.physicsPos.x;
       this.renderPos.y = this.physicsPos.y;
+      this.renderPocketScale = 1;
+      this.renderPocketAlpha = 1;
       this.renderRot.set(this.physicsRot);
       return;
     }
 
+    this.renderPocketScale = 1;
+    this.renderPocketAlpha = 1;
     this.renderPos.x += (this.physicsPos.x - this.renderPos.x) * smoothFactor;
     this.renderPos.y += (this.physicsPos.y - this.renderPos.y) * smoothFactor;
 
@@ -253,6 +272,56 @@ export class Ball {
   syncPhysicsToRender() {
     this.renderPos.x = this.physicsPos.x;
     this.renderPos.y = this.physicsPos.y;
+    this.renderPocketScale = 1;
+    this.renderPocketAlpha = 1;
     this.renderRot.set(this.physicsRot);
+  }
+
+  startPocketAnimation(targetPos, duration = 0.16) {
+    const startPos = (this.renderPos || this.physicsPos).clone()
+    this.pocketAnimation = {
+      active: true,
+      age: 0,
+      duration,
+      startPos,
+      targetPos: targetPos.clone(),
+      renderPos: startPos.clone(),
+      scale: 1,
+      alpha: 1,
+    }
+  }
+
+  advancePocketAnimation(dt) {
+    if (!this.pocketAnimation?.active) return
+    const animation = this.pocketAnimation
+    animation.age += dt
+    const progress = Math.min(1, animation.age / animation.duration)
+    const eased = 1 - Math.pow(1 - progress, 3)
+    animation.renderPos.x = animation.startPos.x + (animation.targetPos.x - animation.startPos.x) * eased
+    animation.renderPos.y = animation.startPos.y + (animation.targetPos.y - animation.startPos.y) * eased
+    animation.scale = 1 - 0.72 * eased
+    animation.alpha = 1 - 0.88 * eased
+    this.renderPos.x = animation.renderPos.x
+    this.renderPos.y = animation.renderPos.y
+    this.renderPocketScale = animation.scale
+    this.renderPocketAlpha = animation.alpha
+
+    if (progress >= 1) {
+      animation.active = false
+      this.renderPos.x = animation.targetPos.x
+      this.renderPos.y = animation.targetPos.y
+      this.renderPocketScale = 0.28
+      this.renderPocketAlpha = 0.12
+    }
+  }
+
+  isPocketAnimationVisible() {
+    return this.pocketAnimation?.active === true
+  }
+
+  clearPocketAnimation() {
+    this.pocketAnimation = null
+    this.renderPocketScale = 1
+    this.renderPocketAlpha = 1
   }
 }

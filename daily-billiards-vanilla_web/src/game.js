@@ -626,6 +626,7 @@ export class BilliardsGame {
     if (isSettledSync || isAuthoritative) this.awaitingSettledSync = false
     if (this.ballInHand && this.cueBall?.pocketed) {
       this.cueBall.pocketed = false
+      this.cueBall.clearPocketAnimation?.()
       this.cueBall.pos = new Vec2(this.ballInHandZone === 'kitchen' ? HEAD_STRING_X : -TABLE_WIDTH / 4, 0)
       this.cueBall.vel = new Vec2(0, 0)
       this.cueBall.syncPhysicsToRender?.()
@@ -776,7 +777,7 @@ export class BilliardsGame {
     const hw = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET, hh = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET;
     const clampedXMax = this.ballInHandZone === 'kitchen' ? HEAD_STRING_X : hw;
     const next = new Vec2(Math.max(-hw, Math.min(clampedXMax, this.mousePos.x)), Math.max(-hh, Math.min(hh, this.mousePos.y)));
-    this.cueBall.vel = new Vec2(0, 0); this.cueBall.pocketed = false;
+    this.cueBall.vel = new Vec2(0, 0); this.cueBall.pocketed = false; this.cueBall.clearPocketAnimation?.();
     if (this.cuePlacementValid = this.isCuePlacementLegal(next)) { this.cueBall.pos = next; this.lastValidCuePosition = next.clone(); }
     else if (this.lastValidCuePosition) this.cueBall.pos = this.lastValidCuePosition.clone();
     else this.cueBall.pos = next;

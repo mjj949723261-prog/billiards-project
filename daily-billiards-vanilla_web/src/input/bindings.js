@@ -61,6 +61,7 @@ export function bindGameInput(game) {
     game.isDragging = true
     if (debugAlwaysDrag) {
       game.cueBall.pocketed = false
+      game.cueBall.clearPocketAnimation?.()
       game.showRemoteCue = false
     }
     game.aimAngle = Math.atan2(aimVector.y, aimVector.x)

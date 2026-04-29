@@ -439,7 +439,8 @@ export class PixiRenderer {
         }
 
         game.balls.forEach(ball => {
-            if (ball.pocketed) return;
+            const showPocketAnimation = ball.isPocketAnimationVisible?.() === true;
+            if (ball.pocketed && !showPocketAnimation) return;
             activeBalls.add(ball);
             
             let shadow = this.shadowSprites.get(ball);
@@ -453,6 +454,10 @@ export class PixiRenderer {
             }
             shadow.x = ball.renderPos.x + 2;
             shadow.y = ball.renderPos.y + 4;
+            shadow.alpha = showPocketAnimation ? Math.max(0, ball.renderPocketAlpha * 0.65) : 1;
+            const shadowScale = showPocketAnimation ? Math.max(0.18, ball.renderPocketScale) : 1;
+            shadow.width = BALL_RADIUS * 2.2 * shadowScale;
+            shadow.height = BALL_RADIUS * 2.2 * shadowScale;
 
             let sprite = this.ballSprites.get(ball);
             if (!sprite) {
@@ -475,6 +480,9 @@ export class PixiRenderer {
             
             sprite.x = ball.renderPos.x;
             sprite.y = ball.renderPos.y;
+            sprite.alpha = showPocketAnimation ? Math.max(0, ball.renderPocketAlpha) : 1;
+            const pocketScale = showPocketAnimation ? Math.max(0.18, ball.renderPocketScale) : 1;
+            sprite.scale.set(BALL_RADIUS * pocketScale);
             sprite.shader.uniforms.uRotation = ball.renderRot;
         });
 

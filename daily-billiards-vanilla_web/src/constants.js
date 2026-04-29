@@ -22,6 +22,9 @@ export const PLAYABLE_AREA_INSET = BALL_RADIUS + 24;
 /** @type {number} 每个球袋的半径（像素）。 */
 export const POCKET_RADIUS = 22;
 
+/** @type {number} 进袋判定使用的球心捕获半径（像素）。 */
+export const POCKET_CAPTURE_RADIUS = POCKET_RADIUS - BALL_RADIUS * 0.35;
+
 /** @type {number} 应用于击球力量的缩放系数。 */
 export const SHOT_POWER_SCALE = 0.15;
 
