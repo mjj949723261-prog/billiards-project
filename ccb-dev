@@ -1,0 +1,41 @@
+#!/bin/zsh
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+run_step() {
+  local label="$1"
+  shift
+  if ! "$@"; then
+    echo "[ccb-dev] ${label} 失败，已暂停，请先处理后再继续。" >&2
+    exit 1
+  fi
+}
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: ./ccb-dev '<需求内容>'"
+  exit 1
+fi
+
+request="$*"
+lead_prompt="$(cat ./.ccb/prompts/lead.md)"
+builder_prompt="$(cat ./.ccb/prompts/builder.md)"
+reviewer_prompt="$(cat ./.ccb/prompts/reviewer.md)"
+
+run_step "通知 lead" ccb ask lead "${lead_prompt}
+
+任务：理解这个需求并拆成最小可执行步骤。
+需求：${request}"
+run_step "等待 lead 回复" ccb pend lead
+
+run_step "通知 builder" ccb ask builder "${builder_prompt}
+
+任务：按这个方案开始实现，直接给出修改建议或执行结果。
+需求：${request}"
+run_step "等待 builder 回复" ccb pend builder
+
+run_step "通知 reviewer" ccb ask reviewer "${reviewer_prompt}
+
+任务：审查这个实现方案，指出风险、遗漏和边界条件。
+需求：${request}"
+run_step "等待 reviewer 回复" ccb pend reviewer

@@ -24,3 +24,14 @@ billiards-server/backend_current.log
 *.swo
 
 .m2/
+
+# Local CCB runtime and helper scripts
+.ccb/
+.ccb-requests/
+.claude/
+.gemini/
+/ccb-bug
+/ccb-dev
+/ccb-review
+/ccb-start
+/ccb-ui
