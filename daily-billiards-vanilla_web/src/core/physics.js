@@ -9,7 +9,10 @@ import {
   BALL_RADIUS,
   FIXED_TIMESTEP_MS,
   MAX_PHYSICS_STEPS_PER_FRAME,
-  PLAYABLE_AREA_INSET,
+  PLAYABLE_AREA_INSET_BOTTOM,
+  PLAYABLE_AREA_INSET_LEFT,
+  PLAYABLE_AREA_INSET_RIGHT,
+  PLAYABLE_AREA_INSET_TOP,
   POCKET_RADIUS,
   POCKET_SCORE_EFFECT_DURATION,
   TABLE_HEIGHT,
@@ -302,8 +305,10 @@ function handleRailCollisions(game, activeBalls) {
   activeBalls.forEach(ball => {
     const pos = ball.physicsPos || ball.pos
     const vel = ball.physicsVel || ball.vel
-    const halfWidth = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET
-    const halfHeight = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET
+    const leftLimit = -TABLE_WIDTH / 2 + PLAYABLE_AREA_INSET_LEFT
+    const rightLimit = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET_RIGHT
+    const topLimit = -TABLE_HEIGHT / 2 + PLAYABLE_AREA_INSET_TOP
+    const bottomLimit = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET_BOTTOM
     
     const nearTopLeftPocket = game.pockets[0] && Vec2.distance(pos, game.pockets[0]) < pocketProximity
     const nearTopMiddlePocket = game.pockets[1] && Vec2.distance(pos, game.pockets[1]) < pocketProximity
@@ -313,11 +318,11 @@ function handleRailCollisions(game, activeBalls) {
     const nearBottomRightPocket = game.pockets[5] && Vec2.distance(pos, game.pockets[5]) < pocketProximity
     
     // 左右库边碰撞检测
-    if (pos.x < -halfWidth) {
+    if (pos.x < leftLimit) {
       const enteringLeftPocket = nearTopLeftPocket || nearBottomLeftPocket
       if (!enteringLeftPocket) {
           const impact = Math.abs(vel.x)
-          pos.x = -halfWidth
+          pos.x = leftLimit
           vel.x *= -WALL_BOUNCE
           vel.y *= RAIL_FRICTION // 加入切向摩擦
           if (game.shotActive) game.shotState.railContacts++
@@ -325,11 +330,11 @@ function handleRailCollisions(game, activeBalls) {
           if (impact > 2) game.collisionEffects.push({ pos: new Vec2(-TABLE_WIDTH/2, pos.y), age: 0, type: 'rail' })
       }
     }
-    if (pos.x > halfWidth) {
+    if (pos.x > rightLimit) {
       const enteringRightPocket = nearTopRightPocket || nearBottomRightPocket
       if (!enteringRightPocket) {
           const impact = Math.abs(vel.x)
-          pos.x = halfWidth
+          pos.x = rightLimit
           vel.x *= -WALL_BOUNCE
           vel.y *= RAIL_FRICTION // 加入切向摩擦
           if (game.shotActive) game.shotState.railContacts++
@@ -339,11 +344,11 @@ function handleRailCollisions(game, activeBalls) {
     }
 
     // 上下库边碰撞检测
-    if (pos.y < -halfHeight) {
+    if (pos.y < topLimit) {
       const enteringTopPocket = nearTopLeftPocket || nearTopMiddlePocket || nearTopRightPocket
       if (!enteringTopPocket) {
           const impact = Math.abs(vel.y)
-          pos.y = -halfHeight
+      pos.y = topLimit
           vel.y *= -WALL_BOUNCE
           vel.x *= RAIL_FRICTION // 加入切向摩擦
           if (game.shotActive) game.shotState.railContacts++
@@ -351,11 +356,11 @@ function handleRailCollisions(game, activeBalls) {
           if (impact > 2) game.collisionEffects.push({ pos: new Vec2(pos.x, -TABLE_HEIGHT/2), age: 0, type: 'rail' })
       }
     }
-    if (pos.y > halfHeight) {
+    if (pos.y > bottomLimit) {
       const enteringBottomPocket = nearBottomLeftPocket || nearBottomMiddlePocket || nearBottomRightPocket
       if (!enteringBottomPocket) {
           const impact = Math.abs(vel.y)
-          pos.y = halfHeight
+      pos.y = bottomLimit
           vel.y *= -WALL_BOUNCE
           vel.x *= RAIL_FRICTION // 加入切向摩擦
           if (game.shotActive) game.shotState.railContacts++

@@ -3,7 +3,15 @@
  * @description 提供计算瞄准引导、球体碰撞射线投射以及库边反弹预测的工具函数。
  */
 
-import { BALL_RADIUS, PLAYABLE_AREA_INSET, TABLE_WIDTH, TABLE_HEIGHT } from '../constants.js?v=20260429-room-entry-fix'
+import {
+  BALL_RADIUS,
+  PLAYABLE_AREA_INSET_BOTTOM,
+  PLAYABLE_AREA_INSET_LEFT,
+  PLAYABLE_AREA_INSET_RIGHT,
+  PLAYABLE_AREA_INSET_TOP,
+  TABLE_WIDTH,
+  TABLE_HEIGHT,
+} from '../constants.js?v=20260429-room-entry-fix'
 import { Vec2 } from '../math.js'
 
 /**
@@ -75,15 +83,17 @@ export function getAimGuide(cueBall, balls, direction) {
  * @returns {number} 到库边的距离。
  */
 export function getWallAimDistance(start, direction) {
-  const halfWidth = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET
-  const halfHeight = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET
+  const leftLimit = -TABLE_WIDTH / 2 + PLAYABLE_AREA_INSET_LEFT
+  const rightLimit = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET_RIGHT
+  const topLimit = -TABLE_HEIGHT / 2 + PLAYABLE_AREA_INSET_TOP
+  const bottomLimit = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET_BOTTOM
   const distances = []
 
   // 计算到四面库边的投影距离
-  if (direction.x > 0) distances.push((halfWidth - start.x) / direction.x)
-  if (direction.x < 0) distances.push((-halfWidth - start.x) / direction.x)
-  if (direction.y > 0) distances.push((halfHeight - start.y) / direction.y)
-  if (direction.y < 0) distances.push((-halfHeight - start.y) / direction.y)
+  if (direction.x > 0) distances.push((rightLimit - start.x) / direction.x)
+  if (direction.x < 0) distances.push((leftLimit - start.x) / direction.x)
+  if (direction.y > 0) distances.push((bottomLimit - start.y) / direction.y)
+  if (direction.y < 0) distances.push((topLimit - start.y) / direction.y)
 
   // 过滤出有效的正数距离并取最小值
   const positiveDistances = distances.filter(distance => Number.isFinite(distance) && distance > 0)
@@ -99,14 +109,16 @@ export function getWallAimDistance(start, direction) {
  */
 export function getProjectedTravel(start, direction, limit = 220) {
   const unitDirection = direction.clone().normalize()
-  const halfWidth = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET
-  const halfHeight = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET
+  const leftLimit = -TABLE_WIDTH / 2 + PLAYABLE_AREA_INSET_LEFT
+  const rightLimit = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET_RIGHT
+  const topLimit = -TABLE_HEIGHT / 2 + PLAYABLE_AREA_INSET_TOP
+  const bottomLimit = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET_BOTTOM
   const distances = [limit]
 
-  if (unitDirection.x > 0) distances.push((halfWidth - start.x) / unitDirection.x)
-  if (unitDirection.x < 0) distances.push((-halfWidth - start.x) / unitDirection.x)
-  if (unitDirection.y > 0) distances.push((halfHeight - start.y) / unitDirection.y)
-  if (unitDirection.y < 0) distances.push((-halfHeight - start.y) / unitDirection.y)
+  if (unitDirection.x > 0) distances.push((rightLimit - start.x) / unitDirection.x)
+  if (unitDirection.x < 0) distances.push((leftLimit - start.x) / unitDirection.x)
+  if (unitDirection.y > 0) distances.push((bottomLimit - start.y) / unitDirection.y)
+  if (unitDirection.y < 0) distances.push((topLimit - start.y) / unitDirection.y)
 
   const positiveDistances = distances.filter(distance => Number.isFinite(distance) && distance > 0)
   return Math.min(...positiveDistances)

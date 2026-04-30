@@ -1334,35 +1334,39 @@ test('gameplay fits table cloth first and treats rail thickness as a separate vi
 test('debug rolling area overlay marks the playable cloth bounds in the pixi renderer', () => {
   const rendererSource = fs.readFileSync(new URL('./src/render/pixi-renderer.js', import.meta.url), 'utf8')
 
-  assert.match(rendererSource, /const rollAreaX = -TABLE_WIDTH \/ 2 \+ PLAYABLE_AREA_INSET;/)
-  assert.match(rendererSource, /const rollAreaY = -TABLE_HEIGHT \/ 2 \+ PLAYABLE_AREA_INSET;/)
-  assert.match(rendererSource, /const rollAreaWidth = TABLE_WIDTH - PLAYABLE_AREA_INSET \* 2;/)
-  assert.match(rendererSource, /const rollAreaHeight = TABLE_HEIGHT - PLAYABLE_AREA_INSET \* 2;/)
+  assert.match(rendererSource, /const rollAreaX = -TABLE_WIDTH \/ 2 \+ PLAYABLE_AREA_INSET_LEFT;/)
+  assert.match(rendererSource, /const rollAreaY = -TABLE_HEIGHT \/ 2 \+ PLAYABLE_AREA_INSET_TOP;/)
+  assert.match(rendererSource, /const rollAreaWidth = TABLE_WIDTH - PLAYABLE_AREA_INSET_LEFT - PLAYABLE_AREA_INSET_RIGHT;/)
+  assert.match(rendererSource, /const rollAreaHeight = TABLE_HEIGHT - PLAYABLE_AREA_INSET_TOP - PLAYABLE_AREA_INSET_BOTTOM;/)
   assert.match(rendererSource, /rollArea\.beginFill\(0x3b82f6,\s*0\.16\);/)
 })
 
 test('debug rolling area overlay marks the playable cloth bounds in the canvas fallback', () => {
   const canvasSource = fs.readFileSync(new URL('./src/render/table-renderer.js', import.meta.url), 'utf8')
 
-  assert.match(canvasSource, /const rollAreaX = -TABLE_WIDTH \/ 2 \+ PLAYABLE_AREA_INSET/)
-  assert.match(canvasSource, /const rollAreaY = -TABLE_HEIGHT \/ 2 \+ PLAYABLE_AREA_INSET/)
-  assert.match(canvasSource, /const rollAreaWidth = TABLE_WIDTH - PLAYABLE_AREA_INSET \* 2/)
-  assert.match(canvasSource, /const rollAreaHeight = TABLE_HEIGHT - PLAYABLE_AREA_INSET \* 2/)
+  assert.match(canvasSource, /const rollAreaX = -TABLE_WIDTH \/ 2 \+ PLAYABLE_AREA_INSET_LEFT/)
+  assert.match(canvasSource, /const rollAreaY = -TABLE_HEIGHT \/ 2 \+ PLAYABLE_AREA_INSET_TOP/)
+  assert.match(canvasSource, /const rollAreaWidth = TABLE_WIDTH - PLAYABLE_AREA_INSET_LEFT - PLAYABLE_AREA_INSET_RIGHT/)
+  assert.match(canvasSource, /const rollAreaHeight = TABLE_HEIGHT - PLAYABLE_AREA_INSET_TOP - PLAYABLE_AREA_INSET_BOTTOM/)
   assert.match(canvasSource, /ctx\.fillStyle = 'rgba\(59,\s*130,\s*246,\s*0\.16\)'/)
 })
 
-test('playable area inset is shared by physics, aiming, placement, and the debug overlay', () => {
+test('playable area insets are shared by physics, aiming, placement, and the debug overlay', () => {
   const constantsSource = fs.readFileSync(new URL('./src/constants.js', import.meta.url), 'utf8')
   const physicsSource = fs.readFileSync(new URL('./src/core/physics.js', import.meta.url), 'utf8')
   const aimSource = fs.readFileSync(new URL('./src/core/aim.js', import.meta.url), 'utf8')
   const gameSource = fs.readFileSync(new URL('./src/game.js', import.meta.url), 'utf8')
 
-  assert.match(constantsSource, /export const PLAYABLE_AREA_INSET = BALL_RADIUS \+ 24;/)
-  assert.match(physicsSource, /const halfWidth = TABLE_WIDTH \/ 2 - PLAYABLE_AREA_INSET/)
-  assert.match(physicsSource, /const halfHeight = TABLE_HEIGHT \/ 2 - PLAYABLE_AREA_INSET/)
-  assert.match(aimSource, /const halfWidth = TABLE_WIDTH \/ 2 - PLAYABLE_AREA_INSET/)
-  assert.match(aimSource, /const halfHeight = TABLE_HEIGHT \/ 2 - PLAYABLE_AREA_INSET/)
-  assert.match(gameSource, /const hw = TABLE_WIDTH \/ 2 - PLAYABLE_AREA_INSET, hh = TABLE_HEIGHT \/ 2 - PLAYABLE_AREA_INSET;/)
+  assert.match(constantsSource, /export const PLAYABLE_AREA_INSET_LEFT = BALL_RADIUS \+ 24;/)
+  assert.match(constantsSource, /export const PLAYABLE_AREA_INSET_RIGHT = BALL_RADIUS \+ 24;/)
+  assert.match(constantsSource, /export const PLAYABLE_AREA_INSET_TOP = BALL_RADIUS \+ 28;/)
+  assert.match(constantsSource, /export const PLAYABLE_AREA_INSET_BOTTOM = BALL_RADIUS \+ 28;/)
+  assert.match(physicsSource, /const leftLimit = -TABLE_WIDTH \/ 2 \+ PLAYABLE_AREA_INSET_LEFT/)
+  assert.match(physicsSource, /const rightLimit = TABLE_WIDTH \/ 2 - PLAYABLE_AREA_INSET_RIGHT/)
+  assert.match(aimSource, /const leftLimit = -TABLE_WIDTH \/ 2 \+ PLAYABLE_AREA_INSET_LEFT/)
+  assert.match(aimSource, /const topLimit = -TABLE_HEIGHT \/ 2 \+ PLAYABLE_AREA_INSET_TOP/)
+  assert.match(gameSource, /const leftLimit = -TABLE_WIDTH \/ 2 \+ PLAYABLE_AREA_INSET_LEFT/)
+  assert.match(gameSource, /const bottomLimit = TABLE_HEIGHT \/ 2 - PLAYABLE_AREA_INSET_BOTTOM/)
 })
 
 test('phase 1 multiplayer sync stops movement-time live position streaming and relies on settled-state syncs', () => {

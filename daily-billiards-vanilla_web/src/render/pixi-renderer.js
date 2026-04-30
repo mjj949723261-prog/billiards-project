@@ -1,6 +1,7 @@
 import { AssetsBase64 } from './assets.js';
 import {
-  BALL_RADIUS, HEAD_STRING_X, MAX_PULL_DISTANCE, PLAYABLE_AREA_INSET, POCKET_RADIUS,
+  BALL_RADIUS, HEAD_STRING_X, MAX_PULL_DISTANCE, PLAYABLE_AREA_INSET_BOTTOM, PLAYABLE_AREA_INSET_LEFT,
+  PLAYABLE_AREA_INSET_RIGHT, PLAYABLE_AREA_INSET_TOP, POCKET_RADIUS,
   RAIL_THICKNESS, RELEASE_FLASH_DURATION, TABLE_HEIGHT, TABLE_WIDTH
 } from '../constants.js?v=20260429-room-entry-fix';
 import { hasDebugOverlay, isPortraitLayout } from '../layout/mode.js';
@@ -257,10 +258,10 @@ export class PixiRenderer {
         const railThickness = this.visualRailThickness;
         const borderW = TABLE_WIDTH + this.visualRailThickness * 2;
         const borderH = TABLE_HEIGHT + this.visualRailThickness * 2;
-        const rollAreaX = -TABLE_WIDTH / 2 + PLAYABLE_AREA_INSET;
-        const rollAreaY = -TABLE_HEIGHT / 2 + PLAYABLE_AREA_INSET;
-        const rollAreaWidth = TABLE_WIDTH - PLAYABLE_AREA_INSET * 2;
-        const rollAreaHeight = TABLE_HEIGHT - PLAYABLE_AREA_INSET * 2;
+        const rollAreaX = -TABLE_WIDTH / 2 + PLAYABLE_AREA_INSET_LEFT;
+        const rollAreaY = -TABLE_HEIGHT / 2 + PLAYABLE_AREA_INSET_TOP;
+        const rollAreaWidth = TABLE_WIDTH - PLAYABLE_AREA_INSET_LEFT - PLAYABLE_AREA_INSET_RIGHT;
+        const rollAreaHeight = TABLE_HEIGHT - PLAYABLE_AREA_INSET_TOP - PLAYABLE_AREA_INSET_BOTTOM;
         const showDebugOverlay = hasDebugOverlay(window);
 
         if (this.textures.tableSurface?.baseTexture?.valid) {
@@ -274,8 +275,10 @@ export class PixiRenderer {
 
             const tableSurface = new PIXI.Sprite(this.textures.tableSurface);
             tableSurface.anchor.set(0.5);
-            tableSurface.width = borderW;
-            tableSurface.height = borderH;
+            const textureWidth = this.textures.tableSurface.baseTexture.width || 1;
+            const textureHeight = this.textures.tableSurface.baseTexture.height || 1;
+            const containScale = Math.min(borderW / textureWidth, borderH / textureHeight);
+            tableSurface.scale.set(containScale);
             this.staticLayer.addChild(tableSurface);
 
             if (showDebugOverlay) {

@@ -15,7 +15,10 @@ import {
   TURN_TIME_LIMIT,
   MAX_PHYSICS_STEPS_PER_FRAME,
   POCKET_SCORE_EFFECT_DURATION,
-  PLAYABLE_AREA_INSET,
+  PLAYABLE_AREA_INSET_BOTTOM,
+  PLAYABLE_AREA_INSET_LEFT,
+  PLAYABLE_AREA_INSET_RIGHT,
+  PLAYABLE_AREA_INSET_TOP,
   HEAD_STRING_X,
   SHOT_POWER_SCALE,
   RELEASE_FLASH_DURATION,
@@ -727,13 +730,15 @@ export class BilliardsGame {
 
     const cuePos = this.cueBall.physicsPos || this.cueBall.pos
     const cueVel = this.cueBall.physicsVel || this.cueBall.vel
-    const halfWidth = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET
-    const halfHeight = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET
+    const leftLimit = -TABLE_WIDTH / 2 + PLAYABLE_AREA_INSET_LEFT
+    const rightLimit = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET_RIGHT
+    const topLimit = -TABLE_HEIGHT / 2 + PLAYABLE_AREA_INSET_TOP
+    const bottomLimit = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET_BOTTOM
     const fallbackX = this.ballInHandZone === 'kitchen' ? HEAD_STRING_X : -TABLE_WIDTH / 4
-    const validPosition = cuePos.x >= -halfWidth
-      && cuePos.x <= halfWidth
-      && cuePos.y >= -halfHeight
-      && cuePos.y <= halfHeight
+    const validPosition = cuePos.x >= leftLimit
+      && cuePos.x <= rightLimit
+      && cuePos.y >= topLimit
+      && cuePos.y <= bottomLimit
       && (this.ballInHandZone !== 'kitchen' || cuePos.x <= HEAD_STRING_X)
     const before = {
       x: cuePos.x,
@@ -917,8 +922,11 @@ export class BilliardsGame {
    * @returns {boolean} 如果位置在范围内且不与其他球重叠，则返回 true。
    */
   isCuePlacementLegal(position) {
-    const hw = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET, hh = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET;
-    if (position.x < -hw || position.x > hw || position.y < -hh || position.y > hh) return false;
+    const leftLimit = -TABLE_WIDTH / 2 + PLAYABLE_AREA_INSET_LEFT
+    const rightLimit = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET_RIGHT
+    const topLimit = -TABLE_HEIGHT / 2 + PLAYABLE_AREA_INSET_TOP
+    const bottomLimit = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET_BOTTOM
+    if (position.x < leftLimit || position.x > rightLimit || position.y < topLimit || position.y > bottomLimit) return false;
     if (this.ballInHandZone === 'kitchen' && position.x > HEAD_STRING_X) return false;
     return !this.balls.some(ball => ball !== this.cueBall && !ball.pocketed && Vec2.distance(ball.pos, position) < BALL_RADIUS * 2 + 2);
   }
@@ -927,9 +935,15 @@ export class BilliardsGame {
    * 尝试在当前鼠标位置放置母球。
    */
   tryPlaceCueBall() {
-    const hw = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET, hh = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET;
-    const clampedXMax = this.ballInHandZone === 'kitchen' ? HEAD_STRING_X : hw;
-    const next = new Vec2(Math.max(-hw, Math.min(clampedXMax, this.mousePos.x)), Math.max(-hh, Math.min(hh, this.mousePos.y)));
+    const leftLimit = -TABLE_WIDTH / 2 + PLAYABLE_AREA_INSET_LEFT
+    const rightLimit = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET_RIGHT
+    const topLimit = -TABLE_HEIGHT / 2 + PLAYABLE_AREA_INSET_TOP
+    const bottomLimit = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET_BOTTOM
+    const clampedXMax = this.ballInHandZone === 'kitchen' ? HEAD_STRING_X : rightLimit;
+    const next = new Vec2(
+      Math.max(leftLimit, Math.min(clampedXMax, this.mousePos.x)),
+      Math.max(topLimit, Math.min(bottomLimit, this.mousePos.y)),
+    );
     this.cueBall.vel.x = 0; this.cueBall.vel.y = 0; this.cueBall.pocketed = false; this.cueBall.clearPocketAnimation?.();
     if (this.cuePlacementValid = this.isCuePlacementLegal(next)) { this.cueBall.pos = next; this.lastValidCuePosition = next.clone(); }
     else if (this.lastValidCuePosition) this.cueBall.pos = this.lastValidCuePosition.clone();

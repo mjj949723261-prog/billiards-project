@@ -2,7 +2,10 @@ import {
   BALL_RADIUS,
   HEAD_STRING_X,
   MAX_PULL_DISTANCE,
-  PLAYABLE_AREA_INSET,
+  PLAYABLE_AREA_INSET_BOTTOM,
+  PLAYABLE_AREA_INSET_LEFT,
+  PLAYABLE_AREA_INSET_RIGHT,
+  PLAYABLE_AREA_INSET_TOP,
   POCKET_RADIUS,
   RAIL_THICKNESS,
   RELEASE_FLASH_DURATION,
@@ -33,19 +36,23 @@ export function resolveTableSurfaceSourceRect(
 }
 
 export function getPocketVisualCenters() {
-  const rollAreaX = -TABLE_WIDTH / 2 + PLAYABLE_AREA_INSET
-  const rollAreaY = -TABLE_HEIGHT / 2 + PLAYABLE_AREA_INSET
-  const rollAreaWidth = TABLE_WIDTH - PLAYABLE_AREA_INSET * 2
-  const rollAreaHeight = TABLE_HEIGHT - PLAYABLE_AREA_INSET * 2
-  const middlePocketOffsetY = 22
+  const rollAreaX = -TABLE_WIDTH / 2 + PLAYABLE_AREA_INSET_LEFT
+  const rollAreaY = -TABLE_HEIGHT / 2 + PLAYABLE_AREA_INSET_TOP
+  const rollAreaWidth = TABLE_WIDTH - PLAYABLE_AREA_INSET_LEFT - PLAYABLE_AREA_INSET_RIGHT
+  const rollAreaHeight = TABLE_HEIGHT - PLAYABLE_AREA_INSET_TOP - PLAYABLE_AREA_INSET_BOTTOM
+  const cornerPocketOffsetLeftX = -6
+  const cornerPocketOffsetRightX = 15
+  const topCornerPocketOffsetY = -8
+  const bottomCornerPocketOffsetY = 8
+  const middlePocketOffsetY = 20
 
   return [
-    new Vec2(rollAreaX - 3 , rollAreaY - 6 -3),
+    new Vec2(rollAreaX + cornerPocketOffsetLeftX, rollAreaY + topCornerPocketOffsetY),
     new Vec2(0, rollAreaY - middlePocketOffsetY),
-    new Vec2(rollAreaX + rollAreaWidth + 4, rollAreaY -6 - 3),
-    new Vec2(rollAreaX - 3, rollAreaY + rollAreaHeight + 9),
+    new Vec2(rollAreaX + rollAreaWidth + cornerPocketOffsetRightX, rollAreaY + topCornerPocketOffsetY),
+    new Vec2(rollAreaX + cornerPocketOffsetLeftX, rollAreaY + rollAreaHeight + bottomCornerPocketOffsetY),
     new Vec2(0, rollAreaY + rollAreaHeight + middlePocketOffsetY),
-    new Vec2(rollAreaX + rollAreaWidth + 4, rollAreaY + rollAreaHeight + 9),
+    new Vec2(rollAreaX + rollAreaWidth + cornerPocketOffsetRightX, rollAreaY + rollAreaHeight + bottomCornerPocketOffsetY),
   ]
 }
 
@@ -73,10 +80,10 @@ export function drawGame(game) {
   const { canvas, ctx } = game
   const isPortrait = shouldRotateGameplayStage(document, window)
   const showDebugOverlay = hasDebugOverlay(window)
-  const rollAreaX = -TABLE_WIDTH / 2 + PLAYABLE_AREA_INSET
-  const rollAreaY = -TABLE_HEIGHT / 2 + PLAYABLE_AREA_INSET
-  const rollAreaWidth = TABLE_WIDTH - PLAYABLE_AREA_INSET * 2
-  const rollAreaHeight = TABLE_HEIGHT - PLAYABLE_AREA_INSET * 2
+  const rollAreaX = -TABLE_WIDTH / 2 + PLAYABLE_AREA_INSET_LEFT
+  const rollAreaY = -TABLE_HEIGHT / 2 + PLAYABLE_AREA_INSET_TOP
+  const rollAreaWidth = TABLE_WIDTH - PLAYABLE_AREA_INSET_LEFT - PLAYABLE_AREA_INSET_RIGHT
+  const rollAreaHeight = TABLE_HEIGHT - PLAYABLE_AREA_INSET_TOP - PLAYABLE_AREA_INSET_BOTTOM
 
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   ctx.save()
