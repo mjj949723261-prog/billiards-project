@@ -194,10 +194,10 @@ export class BilliardsGame {
       ? Math.max(1, Math.min(Math.min(availableWidth, availableHeight) * 0.002, 3))
       : null
     const uiPaddingX = isSemanticMobileGameplay
-      ? railVisualPx * 1.45 + semanticGameplayInset
+      ? semanticGameplayInset
       : (isPortrait ? 20 : 220)
     const uiPaddingY = isSemanticMobileGameplay
-      ? railVisualPx * 1.15 + semanticGameplayInset
+      ? semanticGameplayInset
       : (isPortrait ? 180 : 20)
 
     const usableWidth = availableWidth - uiPaddingX;

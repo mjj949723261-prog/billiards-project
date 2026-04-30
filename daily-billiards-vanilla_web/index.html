@@ -235,67 +235,98 @@
   </div>
 
   <div id="app-wrapper">
-    <div class="room-tools room-tools-left">
-      <button id="btn-leave-room" type="button" class="room-tool-chip">返回大厅</button>
+    <div class="hud-floating-actions hud-floating-actions-left">
+      <button id="btn-leave-room" type="button" class="hud-icon-button hud-icon-button-back" aria-label="返回大厅" title="返回大厅">
+        <span class="hud-icon-symbol" aria-hidden="true">←</span>
+      </button>
     </div>
 
-    <div class="room-tools room-tools-right">
+    <div class="hud-floating-actions hud-floating-actions-right">
+      <button id="btn-settings" type="button" class="hud-icon-button hud-icon-button-settings" aria-label="设置" title="设置">
+        <span class="hud-icon-symbol" aria-hidden="true">⚙</span>
+      </button>
+    </div>
+
+    <div class="room-status-corner">
       <span class="network-indicator" id="network-indicator" data-state="online">网络正常</span>
-      <button id="btn-audio-toggle" type="button" class="room-tool-chip" aria-pressed="true">音乐开关</button>
     </div>
 
-    <!-- 游戏主容器 -->
-    <div id="game-container">
-      <aside class="gameplay-side-panel gameplay-side-panel-left">
-        <div id="player1-score" class="score-box side-score-box active">
+    <header class="top-hud">
+      <div class="top-hud-main">
+        <div id="player1-score" class="score-box hud-score-box active">
           <div class="power-bar"></div>
-          <div class="player-side-head">
+          <div class="player-main-head">
             <span class="player-avatar" id="p1-avatar">1</span>
           </div>
-          <div class="player-side-info-row">
-            <div class="player-side-track">
-              <span class="player-ball-label">目标球</span>
-              <div class="player-ball-shell">
-                <div class="ball-list side-ball-list" id="p1-balls"></div>
-              </div>
-            </div>
-            <div class="player-side-meta">
+          <div class="player-main-content">
+            <div class="player-main-meta">
               <span class="player-name">玩家一</span>
               <span class="player-side-timer hidden" id="p1-side-timer">45</span>
             </div>
-          </div>
-        </div>
-      </aside>
-
-      <aside class="gameplay-side-panel gameplay-side-panel-right">
-        <div id="player2-score" class="score-box side-score-box">
-          <div class="power-bar"></div>
-          <div class="player-side-head player-side-head-reverse">
-            <span class="player-avatar" id="p2-avatar">2</span>
-          </div>
-          <div class="player-side-info-row">
-            <div class="player-side-meta">
-              <span class="player-name">玩家二</span>
-              <span class="player-side-timer hidden" id="p2-side-timer">45</span>
-            </div>
-            <div class="player-side-track">
-              <span class="player-ball-label">目标球</span>
+            <div class="player-main-track">
               <div class="player-ball-shell">
-                <div class="ball-list side-ball-list" id="p2-balls"></div>
+                <div class="ball-list hud-ball-list" id="p1-balls"></div>
               </div>
             </div>
           </div>
         </div>
+
+        <div class="top-hud-center">
+          <div class="center-timer-shell">
+            <span id="hud-turn-timer" class="turn-timer">45</span>
+          </div>
+        </div>
+
+        <div id="player2-score" class="score-box hud-score-box">
+          <div class="power-bar"></div>
+          <div class="player-main-head">
+            <span class="player-avatar" id="p2-avatar">2</span>
+          </div>
+          <div class="player-main-content">
+            <div class="player-main-meta">
+              <span class="player-name">玩家二</span>
+              <span class="player-side-timer hidden" id="p2-side-timer">45</span>
+            </div>
+            <div class="player-main-track">
+              <div class="player-ball-shell">
+                <div class="ball-list hud-ball-list" id="p2-balls"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="play-area">
+      <aside class="control-column control-column-left" aria-label="力度控制">
+        <div id="power-strip" class="power-strip">
+          <div id="power-strip-fill" class="power-strip-fill"></div>
+          <div class="power-strip-scale"></div>
+          <div class="power-strip-cap power-strip-cap-top"></div>
+          <div class="power-strip-cap power-strip-cap-bottom"></div>
+        </div>
       </aside>
 
-      <canvas id="game-canvas"></canvas>
-      <div id="toast-message" class="hidden"></div>
-      <div id="game-over" class="hidden">
-        <h1 id="winner-text">玩家一获胜！</h1>
-        <button id="btn-rematch">再来一局</button>
-        <button onclick="location.reload()" style="background:#444; margin-top:10px;">退出房间</button>
-      </div>
-    </div>
+      <section class="table-slot">
+        <div id="game-container">
+          <canvas id="game-canvas"></canvas>
+          <div id="toast-message" class="hidden"></div>
+          <div id="game-over" class="hidden">
+            <h1 id="winner-text">玩家一获胜！</h1>
+            <button id="btn-rematch">再来一局</button>
+            <button onclick="location.reload()" style="background:#444; margin-top:10px;">退出房间</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="control-column control-column-right" aria-label="球杆方向控制">
+        <div id="aim-wheel" class="aim-wheel">
+          <div class="aim-wheel-ring"></div>
+          <div class="aim-wheel-core"></div>
+          <div id="aim-wheel-indicator" class="aim-wheel-indicator"></div>
+        </div>
+      </aside>
+    </main>
   </div>
 
   <!-- 第三方库：WebGL 渲染与 WebSocket 联机必备 -->

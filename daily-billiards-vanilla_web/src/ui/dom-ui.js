@@ -97,7 +97,8 @@ export function updateGameUi(game) {
   }
 
   if (powerStripFill) {
-    powerStripFill.style.width = `${powerPercent}%`
+    powerStripFill.style.height = `${powerPercent}%`
+    powerStripFill.style.width = ''
     powerStripFill.style.opacity = isMyTurn ? '1' : '0.35'
   }
 
@@ -126,30 +127,35 @@ export function updateGameUi(game) {
 export function updateTimerUi(game) {
   const p1SideTimer = document.getElementById('p1-side-timer')
   const p2SideTimer = document.getElementById('p2-side-timer')
+  const hudTurnTimer = document.getElementById('hud-turn-timer')
+
+  if (p1SideTimer) {
+    p1SideTimer.classList.add('hidden')
+    p1SideTimer.classList.remove('urgent')
+    p1SideTimer.innerText = ''
+  }
+
+  if (p2SideTimer) {
+    p2SideTimer.classList.add('hidden')
+    p2SideTimer.classList.remove('urgent')
+    p2SideTimer.innerText = ''
+  }
   
   // 直接使用已经在 game.js 中处理好的 displayedSecond
   // 如果是 -1（正在运动）或者 0（时间到），就隐藏
   const displayVal = game.displayedSecond
 
   if (displayVal <= 0) {
-    if (p1SideTimer) {
-      p1SideTimer.classList.add('hidden')
-      p1SideTimer.innerText = ''
-    }
-    if (p2SideTimer) {
-      p2SideTimer.classList.add('hidden')
-      p2SideTimer.innerText = ''
+    if (hudTurnTimer) {
+      hudTurnTimer.classList.add('hidden')
+      hudTurnTimer.classList.remove('urgent')
+      hudTurnTimer.innerText = ''
     }
   } else {
-    if (p1SideTimer) {
-      p1SideTimer.innerText = game.currentPlayer === 1 ? displayVal : ''
-      p1SideTimer.classList.toggle('hidden', game.currentPlayer !== 1)
-      p1SideTimer.classList.toggle('urgent', game.currentPlayer === 1 && displayVal <= 10)
-    }
-    if (p2SideTimer) {
-      p2SideTimer.innerText = game.currentPlayer === 2 ? displayVal : ''
-      p2SideTimer.classList.toggle('hidden', game.currentPlayer !== 2)
-      p2SideTimer.classList.toggle('urgent', game.currentPlayer === 2 && displayVal <= 10)
+    if (hudTurnTimer) {
+      hudTurnTimer.innerText = displayVal
+      hudTurnTimer.classList.remove('hidden')
+      hudTurnTimer.classList.toggle('urgent', displayVal <= 10)
     }
   }
 }

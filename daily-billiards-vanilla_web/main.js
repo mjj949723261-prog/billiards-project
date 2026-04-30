@@ -70,13 +70,6 @@ function updateGameplayRoomChrome() {
         networkIndicator.textContent = label;
     }
 
-    const audioButton = document.getElementById('btn-audio-toggle');
-    if (audioButton) {
-        const enabled = !!window.game?.audio?.enabled;
-        audioButton.textContent = enabled ? '音乐开' : '音乐关';
-        audioButton.setAttribute('aria-pressed', String(enabled));
-        audioButton.classList.toggle('is-off', !enabled);
-    }
 }
 
 function leaveRoomToLobby() {
@@ -726,13 +719,10 @@ document.getElementById('btn-leave-room')?.addEventListener('click', () => {
     leaveRoomToLobby();
 });
 
-document.getElementById('btn-audio-toggle')?.addEventListener('click', () => {
-    if (!window.game?.audio) return;
-    window.game.audio.enabled = !window.game.audio.enabled;
-    if (window.game.audio.masterGain) {
-        window.game.audio.masterGain.gain.value = window.game.audio.enabled ? 0.9 : 0;
+document.getElementById('btn-settings')?.addEventListener('click', () => {
+    if (window.game?.setStatusMessage) {
+        window.game.setStatusMessage('设置面板开发中，后续可在这里切音乐', 1800);
     }
-    updateGameplayRoomChrome();
 });
 
 document.getElementById('btn-copy-room').addEventListener('click', async () => {
