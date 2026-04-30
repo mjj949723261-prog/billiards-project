@@ -312,19 +312,41 @@ public class RoomService {
     public synchronized void processShotEndReport(String roomId, String senderId, Object content) {
         roomRepository.findById(roomId).ifPresent(room -> {
             if (room.getStatus() != BilliardsRoom.GameStatus.RESOLVING) {
+                log.warn("忽略 SHOT_END_REPORT: roomId={}, senderId={}, reason=status_not_resolving, status={}",
+                        roomId, senderId, room.getStatus());
                 return;
             }
             Map<String, Object> report = asMap(content);
             if (report.isEmpty()) {
+                log.warn("忽略 SHOT_END_REPORT: roomId={}, senderId={}, reason=empty_report", roomId, senderId);
                 return;
             }
+            Map<String, Object> cueBall = normalizeBallState(asList(report.get("finalBallState"))).stream()
+                    .filter(ball -> "cue".equals(asString(ball.get("type"))))
+                    .findFirst()
+                    .orElse(null);
+            log.info("接收 SHOT_END_REPORT: roomId={}, senderId={}, senderRole={}, turnId={}, stateVersion={}, shotToken={}, cuePocketed={}, firstContactBallId={}, railContacts={}, cueBall={}",
+                    roomId,
+                    senderId,
+                    asString(report.get("senderRole")),
+                    asLong(report.get("turnId")),
+                    asLong(report.get("stateVersion")),
+                    asString(report.get("shotToken")),
+                    asBoolean(report.get("cuePocketed")),
+                    asString(report.get("firstContactBallId")),
+                    asInt(report.get("railContacts")),
+                    cueBall);
             room.getPendingShotReports().put(senderId, report);
             roomRepository.save(room);
 
             if (room.getPendingShotReports().size() >= 2) {
+                log.info("SHOT_END_REPORT 达到双端数量，立即结算: roomId={}, reports={}",
+                        roomId, room.getPendingShotReports().keySet());
                 turnTimerService.cancelTimer(roomId + SHOT_FINALIZE_TIMER_SUFFIX);
                 finalizeShotFromAvailableReports(roomId);
             } else {
+                log.info("SHOT_END_REPORT 仅收到单端，等待 witness 或 1s 超时: roomId={}, reports={}",
+                        roomId, room.getPendingShotReports().keySet());
                 turnTimerService.cancelTimer(roomId + SHOT_FINALIZE_TIMER_SUFFIX);
                 turnTimerService.startTimer(roomId + SHOT_FINALIZE_TIMER_SUFFIX, 1, () -> finalizeShotFromAvailableReports(roomId));
             }
@@ -543,17 +565,23 @@ public class RoomService {
         roomRepository.findById(roomId).ifPresent(room -> {
             synchronized (room) {
                 if (room.getStatus() != BilliardsRoom.GameStatus.RESOLVING) {
+                    log.warn("跳过 finalizeShotFromAvailableReports: roomId={}, status={}", roomId, room.getStatus());
                     return;
                 }
 
+                log.info("开始 finalizeShotFromAvailableReports: roomId={}, pendingReportSenders={}",
+                        roomId, room.getPendingShotReports().keySet());
                 Map<String, Object> chosenReport = chooseReport(room);
                 if (chosenReport == null) {
+                    log.warn("本杆结果无法选出兼容报告，准备回滚: roomId={}, reports={}",
+                            roomId, room.getPendingShotReports().values());
                     rollbackResolvingRoom(room, "本杆结果冲突，已回退到上一稳定桌面");
                     return;
                 }
 
                 Map<String, Object> result = adjudicateShot(room, chosenReport);
                 if (result == null) {
+                    log.warn("本杆结果轻量校验失败，准备回滚: roomId={}, chosenReport={}", roomId, chosenReport);
                     rollbackResolvingRoom(room, "本杆结果未通过轻量校验");
                     return;
                 }
@@ -562,6 +590,12 @@ public class RoomService {
                 room.getPendingShotReports().clear();
                 turnTimerService.cancelTimer(roomId + SHOT_FINALIZE_TIMER_SUFFIX);
                 roomRepository.save(room);
+                log.info("本杆结算完成并广播 SHOT_RESULT: roomId={}, ballInHand={}, ballInHandZone={}, currentPlayer={}, statusMessage={}",
+                        roomId,
+                        result.get("ballInHand"),
+                        result.get("ballInHandZone"),
+                        result.get("currentPlayer"),
+                        result.get("statusMessage"));
 
                 messagingTemplate.convertAndSend("/topic/room/" + roomId, GameMessage.builder()
                         .type(GameMessage.MessageType.SHOT_RESULT)
@@ -575,9 +609,12 @@ public class RoomService {
 
     private Map<String, Object> chooseReport(BilliardsRoom room) {
         if (room.getPendingShotReports().isEmpty()) {
+            log.warn("chooseReport 失败: roomId={}, reason=no_reports", room.getRoomId());
             return null;
         }
         if (room.getPendingShotReports().size() == 1) {
+            log.info("chooseReport 使用单端报告: roomId={}, sender={}",
+                    room.getRoomId(), room.getPendingShotReports().keySet());
             return room.getPendingShotReports().values().stream()
                     .map(this::asMap)
                     .findFirst()
@@ -599,8 +636,15 @@ public class RoomService {
                         asString(shooterPreferred.get("finalStateHash")),
                         shooterPreferred == first ? asString(second.get("finalStateHash")) : asString(first.get("finalStateHash")));
             }
+            log.info("chooseReport 选择兼容报告: roomId={}, chosenSenderRole={}, firstHash={}, secondHash={}",
+                    room.getRoomId(),
+                    asString(shooterPreferred.get("senderRole")),
+                    asString(first.get("finalStateHash")),
+                    asString(second.get("finalStateHash")));
             return shooterPreferred;
         }
+        log.warn("chooseReport 发现业务不兼容报告: roomId={}, first={}, second={}",
+                room.getRoomId(), first, second);
         return null;
     }
 
@@ -615,6 +659,7 @@ public class RoomService {
     private Map<String, Object> adjudicateShot(BilliardsRoom room, Map<String, Object> report) {
         List<Map<String, Object>> finalBallState = normalizeBallState(asList(report.get("finalBallState")));
         if (!validateBallState(finalBallState)) {
+            log.warn("adjudicateShot 校验失败: roomId={}, reason=invalid_ball_state, report={}", room.getRoomId(), report);
             return null;
         }
 
@@ -625,6 +670,8 @@ public class RoomService {
 
         String calculatedHash = buildStateHash(finalBallState);
         if (!calculatedHash.equals(asString(report.get("finalStateHash")))) {
+            log.warn("adjudicateShot 校验失败: roomId={}, reason=hash_mismatch, calculatedHash={}, reportHash={}",
+                    room.getRoomId(), calculatedHash, asString(report.get("finalStateHash")));
             return null;
         }
 
@@ -777,10 +824,20 @@ public class RoomService {
         result.put("expireAt", room.getExpireAt());
         result.put("serverTime", System.currentTimeMillis());
         result.put("room", buildRoomSnapshot(room));
+        log.info("adjudicateShot 结果: roomId={}, cuePocketed={}, firstContactType={}, foulMessage={}, ballInHand={}, ballInHandZone={}, nextPlayerNumber={}",
+                room.getRoomId(),
+                cuePocketed,
+                firstContactType,
+                foulMessage,
+                ballInHand,
+                ballInHandZone,
+                nextPlayerNumber);
         return result;
     }
 
     private void rollbackResolvingRoom(BilliardsRoom room, String reason) {
+        log.warn("执行 rollbackResolvingRoom: roomId={}, reason={}, pendingReportSenders={}",
+                room.getRoomId(), reason, room.getPendingShotReports().keySet());
         turnTimerService.cancelTimer(room.getRoomId() + SHOT_FINALIZE_TIMER_SUFFIX);
         room.setPendingShotInput(null);
         room.getPendingShotReports().clear();
@@ -1199,13 +1256,15 @@ public class RoomService {
     }
 
     private Map<String, Object> asMap(Object value) {
-        return value instanceof Map<?, ?> map
-                ? map.entrySet().stream().collect(Collectors.toMap(
-                        entry -> String.valueOf(entry.getKey()),
-                        Map.Entry::getValue,
-                        (first, second) -> second,
-                        LinkedHashMap::new))
-                : new LinkedHashMap<>();
+        if (!(value instanceof Map<?, ?> map)) {
+            return new LinkedHashMap<>();
+        }
+
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            normalized.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return normalized;
     }
 
     private List<?> asList(Object value) {

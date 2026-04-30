@@ -4,8 +4,7 @@
  * 包括回合切换、自由球（白球在手）规则、球组分配以及击球合法性评估。
  */
 
-import { HEAD_STRING_X, TURN_TIME_LIMIT, TABLE_WIDTH } from '../constants.js?v=20260429-room-entry-fix'
-import { Vec2 } from '../math.js'
+import { TURN_TIME_LIMIT } from '../constants.js?v=20260429-room-entry-fix'
 
 /**
  * 在产生第一个合法进球后，为玩家分配球组（全色或花色）。
@@ -36,12 +35,7 @@ export function switchTurn(game, withBallInHand = false, ballInHandZone = 'table
   game.displayedSecond = null
   game.isBreakShot = false
   if (withBallInHand) {
-    game.cueBall.pocketed = false
-    game.cueBall.clearPocketAnimation?.()
-    game.cueBall.pos = new Vec2(game.ballInHandZone === 'kitchen' ? HEAD_STRING_X : -TABLE_WIDTH / 4, 0)
-    game.cueBall.vel = new Vec2(0, 0)
-    game.lastValidCuePosition = game.cueBall.pos.clone()
-    game.cuePlacementValid = game.isCuePlacementLegal(game.cueBall.pos)
+    game.ensureCueBallVisibleForBallInHand?.(true)
     
     // 加强自由球提示
     const isMyTurn = (game.currentPlayer === game.playerIndex);

@@ -39,6 +39,10 @@ function uiDebugLog(channel, ...args) {
     console.log(...args)
 }
 
+function logCueRespawnFlow(stage, payload = {}) {
+    console.log(`[CueRespawnFlow] ${stage}`, payload)
+}
+
 /** @global 将 GameClient 挂载到全局窗口对象，方便调试和跨模块访问。 */
 window.GameClient = GameClient;
 
@@ -335,6 +339,20 @@ window.handleShotStartAccepted = (payload, senderId) => {
     window.game.isTurnLocked = true
 
     const isOwnOptimisticShot = senderId === GameClient.playerId
+    logCueRespawnFlow('handleShotStartAccepted.received', {
+        senderId,
+        localPlayerId: GameClient.playerId,
+        isOwnOptimisticShot,
+        roomStatus: room.status || '',
+        shotId: shot.shotId || '',
+        turnId: shot.turnId,
+        stateVersion: shot.stateVersion,
+        shotToken: shot.shotToken || '',
+        cueBallX: shot.cueBallX,
+        cueBallY: shot.cueBallY,
+        aimAngle: shot.aimAngle,
+        powerRatio: shot.powerRatio,
+    })
     if (!isOwnOptimisticShot) {
         window.game.executeAcceptedShotInput(shot)
     } else {
@@ -349,6 +367,19 @@ window.handleShotResult = (payload) => {
     if (!window.game) return
     const room = payload.room || {}
     const playerIds = room.playerIds || []
+    const cueBall = Array.isArray(payload.finalBallState)
+        ? payload.finalBallState.find(ball => ball?.type === 'cue')
+        : null
+    if (payload.ballInHand || payload.statusMessage?.includes('白球落袋') || cueBall?.pocketed) {
+        logCueRespawnFlow('handleShotResult.received', {
+            statusMessage: payload.statusMessage || '',
+            payloadBallInHand: payload.ballInHand,
+            payloadBallInHandZone: payload.ballInHandZone,
+            roomBallInHand: room.ballInHand,
+            roomBallInHandZone: room.ballInHandZone,
+            cueBall,
+        })
+    }
     if (playerIds.length > 0) {
         window.game.playerIdByNumber = {
             1: playerIds[0] || null,
@@ -388,6 +419,21 @@ window.handleRoomSnapshot = (payload) => {
         window.game = bootstrapGame();
     }
     const room = payload.room || payload
+    const roomCueBall = Array.isArray(room.ballState)
+        ? room.ballState.find(ball => ball?.type === 'cue')
+        : Array.isArray(room.ballState?.balls)
+            ? room.ballState.balls.find(ball => ball?.type === 'cue')
+            : null
+    if (room.ballInHand || roomCueBall?.pocketed) {
+        logCueRespawnFlow('handleRoomSnapshot.received', {
+            roomBallInHand: room.ballInHand,
+            roomBallInHandZone: room.ballInHandZone,
+            cueBall: roomCueBall,
+            status: room.status,
+            turnId: room.turnId,
+            stateVersion: room.stateVersion,
+        })
+    }
     window.handleGameStart({ ...room, room, status: room.status || payload.status, _msgType: 'ROOM_SNAPSHOT' })
     if (room.ballState) {
         const restoredSnapshot = Array.isArray(room.ballState) ? { balls: room.ballState } : room.ballState
@@ -402,6 +448,25 @@ window.handleRoomSnapshot = (payload) => {
  */
 window.handleRemoteStateSync = (stateData) => {
     if (window.game) {
+        const roomCueBall = Array.isArray(stateData?.room?.ballState)
+            ? stateData.room.ballState.find(ball => ball?.type === 'cue')
+            : Array.isArray(stateData?.room?.ballState?.balls)
+                ? stateData.room.ballState.balls.find(ball => ball?.type === 'cue')
+                : null
+        const directCueBall = Array.isArray(stateData?.balls)
+            ? stateData.balls.find(ball => ball?.type === 'cue')
+            : null
+        if (stateData?.ballInHand === true || stateData?.room?.ballInHand === true || roomCueBall?.pocketed || directCueBall?.pocketed) {
+            logCueRespawnFlow('handleRemoteStateSync.received', {
+                syncKind: stateData?.syncKind || '',
+                authoritative: stateData?.authoritative === true,
+                ballInHand: stateData?.ballInHand ?? stateData?.room?.ballInHand ?? null,
+                ballInHandZone: stateData?.ballInHandZone || stateData?.room?.ballInHandZone || '',
+                roomCueBall,
+                directCueBall,
+                currentTurnPlayerId: stateData?.room?.currentTurnPlayerId || '',
+            })
+        }
         uiDebugLog('syncFlow', '[UI] apply remote state sync', {
             syncKind: stateData?.syncKind || 'unknown',
             authoritative: stateData?.authoritative === true,

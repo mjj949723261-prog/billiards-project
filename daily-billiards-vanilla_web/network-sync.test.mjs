@@ -1737,9 +1737,16 @@ test('ball-in-hand snapshots keep the cue ball visible on both server and client
   assert.match(roomServiceSource, /boolean isPlacementCommit = false;/)
   assert.match(roomServiceSource, /ensureCueBallVisible\(normalizedBalls, zone, true\);/)
   assert.match(roomServiceSource, /room\.setLastSettledBallState\(canonicalContent\);/)
-  assert.match(gameSource, /if \(this\.ballInHand && this\.cueBall\?\.pocketed\) \{/)
+  assert.match(gameSource, /ensureCueBallVisibleForBallInHand\(forceReposition = false\)/)
+  assert.match(gameSource, /const shouldForceCueReset = isSettledSync/)
+  assert.match(gameSource, /this\.ensureCueBallVisibleForBallInHand\(shouldForceCueReset\)/)
+  assert.match(gameSource, /const cueScratchResult = typeof result\.statusMessage === 'string'/)
+  assert.match(gameSource, /if \(cueScratchResult && !this\.ballInHand\) \{\s*this\.ballInHand = true/)
+  assert.match(gameSource, /if \(wasPocketed && !ball\.pocketed\) \{\s*ball\.clearPocketAnimation\?\.\(\)\s*\}/)
   assert.match(gameSource, /this\.cueBall\.pocketed = false/)
-  assert.match(gameSource, /this\.cueBall\.pos = new Vec2\(this\.ballInHandZone === 'kitchen' \? HEAD_STRING_X : -TABLE_WIDTH \/ 4, 0\)/)
+  assert.match(gameSource, /if \(forceReposition \|\| !validPosition\) \{\s*cuePos\.x = fallbackX\s*cuePos\.y = 0\s*\}/)
+  assert.match(gameSource, /if \(this\.ballInHand\) \{\s*this\.ensureCueBallVisibleForBallInHand\(true\)\s*\}/)
+  assert.match(gameSource, /if \(this\.ballInHand && !this\.isGameOver\) \{\s*this\.ensureCueBallVisibleForBallInHand\(false\)\s*\}/)
 })
 
 test('gameplay room layout splits tools top and players on short rails without a bottom control bar', () => {

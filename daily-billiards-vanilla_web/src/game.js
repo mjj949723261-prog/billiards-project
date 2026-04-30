@@ -37,6 +37,11 @@ import { buildSettledSnapshotPayload, createShotEndReport, snapshotStateFromRoom
 
 const DEBUG_JITTER = typeof window !== 'undefined' && window.location.hash.includes('debug-jitter')
 
+function logCueRespawnDebug(stage, payload = {}) {
+  if (typeof console === 'undefined') return
+  console.log(`[CueRespawnDebug] ${stage}`, payload)
+}
+
 /**
  * 管理所有台球逻辑和状态的主游戏类。
  */
@@ -436,6 +441,17 @@ export class BilliardsGame {
   }
 
   executeAcceptedShotInput(shotData) {
+    logCueRespawnDebug('executeAcceptedShotInput', {
+      shotId: shotData?.shotId || '',
+      startedAt: shotData?.startedAt,
+      protocol: shotData?.protocol || '',
+      aimAngle: shotData?.aimAngle,
+      powerRatio: shotData?.powerRatio,
+      cueBallX: shotData?.cueBallX,
+      cueBallY: shotData?.cueBallY,
+      currentPlayer: this.currentPlayer,
+      lastAppliedShotId: this.lastAppliedShotId,
+    })
     this.executeRemoteShoot(shotData)
   }
 
@@ -580,6 +596,9 @@ export class BilliardsGame {
         physicsPos.x = s.x;
         physicsPos.y = s.y;
         ball.pocketed = s.pocketed;
+        if (wasPocketed && !ball.pocketed) {
+          ball.clearPocketAnimation?.()
+        }
         if (!isPlacementLiveSync) {
           physicsVel.x = 0;
           physicsVel.y = 0;
@@ -624,12 +643,33 @@ export class BilliardsGame {
     if (typeof room.lastShotStartedAt === 'number' && room.lastShotStartedAt > 0) this.lastKnownShotStartedAt = room.lastShotStartedAt
     if (typeof room.lastSettledSignature === 'string' && room.lastSettledSignature) this.lastSettledSignature = room.lastSettledSignature
     if (isSettledSync || isAuthoritative) this.awaitingSettledSync = false
-    if (this.ballInHand && this.cueBall?.pocketed) {
-      this.cueBall.pocketed = false
-      this.cueBall.clearPocketAnimation?.()
-      this.cueBall.pos = new Vec2(this.ballInHandZone === 'kitchen' ? HEAD_STRING_X : -TABLE_WIDTH / 4, 0)
-      this.cueBall.vel = new Vec2(0, 0)
-      this.cueBall.syncPhysicsToRender?.()
+    const cueBallSnapshot = ballsToApply.find(ballState => ballState?.type === 'cue')
+    if (this.ballInHand) {
+      const shouldForceCueReset = isSettledSync
+        || isAuthoritative
+        || snapshot.forceBusinessUpdate === true
+        || cueBallSnapshot?.pocketed === true
+      logCueRespawnDebug('applyGameStateSnapshot.beforeEnsure', {
+        syncKind: snapshot.syncKind || '',
+        authoritative: isAuthoritative,
+        forceBusinessUpdate: snapshot.forceBusinessUpdate === true,
+        roomBallInHand: room.ballInHand,
+        roomBallInHandZone: room.ballInHandZone,
+        cueSnapshot: cueBallSnapshot ? {
+          x: cueBallSnapshot.x,
+          y: cueBallSnapshot.y,
+          pocketed: cueBallSnapshot.pocketed,
+        } : null,
+        localCueBefore: this.cueBall ? {
+          x: this.cueBall.physicsPos?.x,
+          y: this.cueBall.physicsPos?.y,
+          pocketed: this.cueBall.pocketed,
+          renderX: this.cueBall.renderPos?.x,
+          renderY: this.cueBall.renderPos?.y,
+        } : null,
+        shouldForceCueReset,
+      })
+      this.ensureCueBallVisibleForBallInHand(shouldForceCueReset)
     }
     this.playerGroups = room.playerGroups || this.playerGroups;
     this.scores = room.scores || this.scores;
@@ -671,6 +711,57 @@ export class BilliardsGame {
     return snapshot
   }
 
+  ensureCueBallVisibleForBallInHand(forceReposition = false) {
+    if (!this.cueBall) return
+
+    const cuePos = this.cueBall.physicsPos || this.cueBall.pos
+    const cueVel = this.cueBall.physicsVel || this.cueBall.vel
+    const halfWidth = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET
+    const halfHeight = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET
+    const fallbackX = this.ballInHandZone === 'kitchen' ? HEAD_STRING_X : -TABLE_WIDTH / 4
+    const validPosition = cuePos.x >= -halfWidth
+      && cuePos.x <= halfWidth
+      && cuePos.y >= -halfHeight
+      && cuePos.y <= halfHeight
+      && (this.ballInHandZone !== 'kitchen' || cuePos.x <= HEAD_STRING_X)
+    const before = {
+      x: cuePos.x,
+      y: cuePos.y,
+      pocketed: this.cueBall.pocketed,
+      renderX: this.cueBall.renderPos?.x,
+      renderY: this.cueBall.renderPos?.y,
+      ballInHandZone: this.ballInHandZone,
+      forceReposition,
+      validPosition,
+    }
+
+    this.cueBall.pocketed = false
+    this.cueBall.clearPocketAnimation?.()
+
+    if (forceReposition || !validPosition) {
+      cuePos.x = fallbackX
+      cuePos.y = 0
+    }
+
+    cueVel.x = 0
+    cueVel.y = 0
+    this.lastValidCuePosition = cuePos.clone()
+    this.cuePlacementValid = this.isCuePlacementLegal(cuePos)
+    this.cueBall.syncPhysicsToRender?.()
+
+    logCueRespawnDebug('ensureCueBallVisibleForBallInHand.afterEnsure', {
+      before,
+      after: {
+        x: cuePos.x,
+        y: cuePos.y,
+        pocketed: this.cueBall.pocketed,
+        renderX: this.cueBall.renderPos?.x,
+        renderY: this.cueBall.renderPos?.y,
+        cuePlacementValid: this.cuePlacementValid,
+      },
+    })
+  }
+
   rollbackToSettledSnapshot(reason = '出杆未被服务器接受') {
     if (!this.lastSettledSnapshot?.balls) return
     this.applyGameStateSnapshot({
@@ -696,6 +787,36 @@ export class BilliardsGame {
 
   applyShotResult(result) {
     if (!result) return
+    const cueScratchResult = typeof result.statusMessage === 'string'
+      && result.statusMessage.includes('白球落袋')
+      && !result.statusMessage.includes('直接负局')
+    const resultCueBall = Array.isArray(result.finalBallState)
+      ? result.finalBallState.find(ball => ball?.type === 'cue')
+      : null
+
+    if (cueScratchResult || result.ballInHand || resultCueBall?.pocketed) {
+      logCueRespawnDebug('applyShotResult.received', {
+        statusMessage: result.statusMessage || '',
+        cueScratchResult,
+        resultBallInHand: result.ballInHand,
+        resultBallInHandZone: result.ballInHandZone,
+        currentPlayer: result.currentPlayer,
+        nextTurnId: result.nextTurnId,
+        cueFromResult: resultCueBall ? {
+          x: resultCueBall.x,
+          y: resultCueBall.y,
+          pocketed: resultCueBall.pocketed,
+        } : null,
+        localCueBefore: this.cueBall ? {
+          x: this.cueBall.physicsPos?.x,
+          y: this.cueBall.physicsPos?.y,
+          pocketed: this.cueBall.pocketed,
+          renderX: this.cueBall.renderPos?.x,
+          renderY: this.cueBall.renderPos?.y,
+        } : null,
+      })
+    }
+
     if (result.finalBallState) {
       this.applyGameStateSnapshot({
         balls: result.finalBallState,
@@ -718,6 +839,10 @@ export class BilliardsGame {
     if (result.currentPlayer !== undefined) this.currentPlayer = result.currentPlayer
     if (result.ballInHand !== undefined) this.ballInHand = result.ballInHand
     if (result.ballInHandZone) this.ballInHandZone = result.ballInHandZone
+    if (cueScratchResult && !this.ballInHand) {
+      this.ballInHand = true
+      this.ballInHandZone = result.ballInHandZone || (result.isBreakShot ? 'kitchen' : 'table')
+    }
     if (result.playerGroups) this.playerGroups = result.playerGroups
     if (result.scores) this.scores = result.scores
     this.isBreakShot = result.isBreakShot !== undefined ? result.isBreakShot : false
@@ -731,6 +856,23 @@ export class BilliardsGame {
     this.showRemoteCue = false
     this.pullDistance = 0
     this.isDragging = false
+    if (this.ballInHand) {
+      this.ensureCueBallVisibleForBallInHand(true)
+    }
+    if (cueScratchResult || this.ballInHand) {
+      logCueRespawnDebug('applyShotResult.afterApply', {
+        cueScratchResult,
+        localBallInHand: this.ballInHand,
+        localBallInHandZone: this.ballInHandZone,
+        localCueAfter: this.cueBall ? {
+          x: this.cueBall.physicsPos?.x,
+          y: this.cueBall.physicsPos?.y,
+          pocketed: this.cueBall.pocketed,
+          renderX: this.cueBall.renderPos?.x,
+          renderY: this.cueBall.renderPos?.y,
+        } : null,
+      })
+    }
     this.commitSettledSnapshot()
     this.updateUI()
   }
@@ -777,7 +919,7 @@ export class BilliardsGame {
     const hw = TABLE_WIDTH / 2 - PLAYABLE_AREA_INSET, hh = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET;
     const clampedXMax = this.ballInHandZone === 'kitchen' ? HEAD_STRING_X : hw;
     const next = new Vec2(Math.max(-hw, Math.min(clampedXMax, this.mousePos.x)), Math.max(-hh, Math.min(hh, this.mousePos.y)));
-    this.cueBall.vel = new Vec2(0, 0); this.cueBall.pocketed = false; this.cueBall.clearPocketAnimation?.();
+    this.cueBall.vel.x = 0; this.cueBall.vel.y = 0; this.cueBall.pocketed = false; this.cueBall.clearPocketAnimation?.();
     if (this.cuePlacementValid = this.isCuePlacementLegal(next)) { this.cueBall.pos = next; this.lastValidCuePosition = next.clone(); }
     else if (this.lastValidCuePosition) this.cueBall.pos = this.lastValidCuePosition.clone();
     else this.cueBall.pos = next;
@@ -837,7 +979,23 @@ export class BilliardsGame {
       this.awaitingShotResult = true
       this.roomPhase = 'RESOLVING'
       const senderRole = wasMyTurn ? 'shooter' : 'witness'
-      GameClient.sendShotEndReport(this.buildShotEndReport(senderRole))
+      const report = this.buildShotEndReport(senderRole)
+      logCueRespawnDebug('evaluateShot.sendShotEndReport', {
+        senderRole,
+        wasMyTurn,
+        turnId: report.turnId,
+        stateVersion: report.stateVersion,
+        shotToken: report.shotToken,
+        firstContactBallId: report.firstContactBallId,
+        cuePocketed: report.cuePocketed,
+        eightPocketed: report.eightPocketed,
+        railContacts: report.railContacts,
+        pocketedBallIds: report.pocketedBallIds,
+        cueBallState: Array.isArray(report.finalBallState)
+          ? report.finalBallState.find(ball => ball?.type === 'cue')
+          : null,
+      })
+      GameClient.sendShotEndReport(report)
       if (wasMyTurn) {
         this.setStatusMessage('本杆结算中', 1800)
       }
@@ -856,6 +1014,9 @@ export class BilliardsGame {
     const deltaSeconds = Math.max(0, frameMs) / 1000
     this.lastUpdate = now;
     updateGamePhysics(this, frameMs);
+    if (this.ballInHand && !this.isGameOver) {
+      this.ensureCueBallVisibleForBallInHand(false)
+    }
     
     if (!this.isGameOver) {
         if (this.timerPaused) {} 
