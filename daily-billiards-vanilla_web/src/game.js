@@ -582,10 +582,18 @@ export class BilliardsGame {
     const isAuthoritative = snapshot.authoritative === true;
     const isLive = snapshot.isLive === true;
     const isSettledSync = snapshot.syncKind === 'settled' || snapshot.syncKind === 'authoritative-settled';
+    const preserveLocalCuePlacement = isAuthoritative
+      && snapshot.forceBusinessUpdate !== true
+      && this.ballInHand
+      && this.placingCue
+      && GameClient.isMyTurn;
 
     ballsToApply.forEach(s => {
       const ball = this.balls.find(b => b.type === s.type && b.label === s.label)
       if (ball) {
+        if (preserveLocalCuePlacement && ball === this.cueBall) {
+          return
+        }
         const physicsPos = ball.physicsPos || ball.pos
         const physicsVel = ball.physicsVel || ball.vel
         const physicsRot = ball.physicsRot || ball.rotMat
@@ -649,27 +657,30 @@ export class BilliardsGame {
         || isAuthoritative
         || snapshot.forceBusinessUpdate === true
         || cueBallSnapshot?.pocketed === true
-      logCueRespawnDebug('applyGameStateSnapshot.beforeEnsure', {
-        syncKind: snapshot.syncKind || '',
-        authoritative: isAuthoritative,
-        forceBusinessUpdate: snapshot.forceBusinessUpdate === true,
-        roomBallInHand: room.ballInHand,
-        roomBallInHandZone: room.ballInHandZone,
-        cueSnapshot: cueBallSnapshot ? {
-          x: cueBallSnapshot.x,
-          y: cueBallSnapshot.y,
-          pocketed: cueBallSnapshot.pocketed,
-        } : null,
-        localCueBefore: this.cueBall ? {
-          x: this.cueBall.physicsPos?.x,
-          y: this.cueBall.physicsPos?.y,
-          pocketed: this.cueBall.pocketed,
-          renderX: this.cueBall.renderPos?.x,
-          renderY: this.cueBall.renderPos?.y,
-        } : null,
-        shouldForceCueReset,
-      })
-      this.ensureCueBallVisibleForBallInHand(shouldForceCueReset)
+      if (!preserveLocalCuePlacement) {
+        logCueRespawnDebug('applyGameStateSnapshot.beforeEnsure', {
+          syncKind: snapshot.syncKind || '',
+          authoritative: isAuthoritative,
+          forceBusinessUpdate: snapshot.forceBusinessUpdate === true,
+          roomBallInHand: room.ballInHand,
+          roomBallInHandZone: room.ballInHandZone,
+          preserveLocalCuePlacement,
+          cueSnapshot: cueBallSnapshot ? {
+            x: cueBallSnapshot.x,
+            y: cueBallSnapshot.y,
+            pocketed: cueBallSnapshot.pocketed,
+          } : null,
+          localCueBefore: this.cueBall ? {
+            x: this.cueBall.physicsPos?.x,
+            y: this.cueBall.physicsPos?.y,
+            pocketed: this.cueBall.pocketed,
+            renderX: this.cueBall.renderPos?.x,
+            renderY: this.cueBall.renderPos?.y,
+          } : null,
+          shouldForceCueReset,
+        })
+        this.ensureCueBallVisibleForBallInHand(shouldForceCueReset)
+      }
     }
     this.playerGroups = room.playerGroups || this.playerGroups;
     this.scores = room.scores || this.scores;
@@ -1014,7 +1025,7 @@ export class BilliardsGame {
     const deltaSeconds = Math.max(0, frameMs) / 1000
     this.lastUpdate = now;
     updateGamePhysics(this, frameMs);
-    if (this.ballInHand && !this.isGameOver) {
+    if (this.ballInHand && !this.isGameOver && !this.placingCue) {
       this.ensureCueBallVisibleForBallInHand(false)
     }
     

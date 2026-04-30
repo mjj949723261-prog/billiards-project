@@ -1746,7 +1746,7 @@ test('ball-in-hand snapshots keep the cue ball visible on both server and client
   assert.match(gameSource, /this\.cueBall\.pocketed = false/)
   assert.match(gameSource, /if \(forceReposition \|\| !validPosition\) \{\s*cuePos\.x = fallbackX\s*cuePos\.y = 0\s*\}/)
   assert.match(gameSource, /if \(this\.ballInHand\) \{\s*this\.ensureCueBallVisibleForBallInHand\(true\)\s*\}/)
-  assert.match(gameSource, /if \(this\.ballInHand && !this\.isGameOver\) \{\s*this\.ensureCueBallVisibleForBallInHand\(false\)\s*\}/)
+  assert.match(gameSource, /if \(this\.ballInHand && !this\.isGameOver && !this\.placingCue\) \{\s*this\.ensureCueBallVisibleForBallInHand\(false\)\s*\}/)
 })
 
 test('gameplay room layout splits tools top and players on short rails without a bottom control bar', () => {
