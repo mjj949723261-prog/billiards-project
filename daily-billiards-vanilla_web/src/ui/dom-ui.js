@@ -70,51 +70,31 @@ export function updateGameUi(game) {
   const isMyTurn = (game.currentPlayer === GameClient.playerIndex);
   const powerPercent = isMyTurn ? Math.min(100, (game.pullDistance / MAX_PULL_DISTANCE) * 100) : 0;
   
-  const p1Bar = p1.querySelector('.power-bar')
-  const p2Bar = p2.querySelector('.power-bar')
   const powerStripFill = document.getElementById('power-strip-fill')
+  const powerStrip = document.getElementById('power-strip')
+  const aimWheel = document.getElementById('aim-wheel')
+  const aimWheelIndicator = document.getElementById('aim-wheel-indicator')
   
-  if (p1Bar) {
-    if (!shouldUseSideBySideHud) {
-      p1Bar.style.width = game.currentPlayer === 1 ? `${powerPercent}%` : '0%'
-      p1Bar.style.height = '100%'
-    } else {
-      p1Bar.style.height = game.currentPlayer === 1 ? `${powerPercent}%` : '0%'
-      p1Bar.style.width = '100%'
-    }
-    p1Bar.style.opacity = (game.currentPlayer === 1 && powerPercent > 0) ? '0.8' : '0'
-  }
-
-  if (p2Bar) {
-    if (!shouldUseSideBySideHud) {
-      p2Bar.style.width = game.currentPlayer === 2 ? `${powerPercent}%` : '0%'
-      p2Bar.style.height = '100%'
-    } else {
-      p2Bar.style.height = game.currentPlayer === 2 ? `${powerPercent}%` : '0%'
-      p2Bar.style.width = '100%'
-    }
-    p2Bar.style.opacity = (game.currentPlayer === 2 && powerPercent > 0) ? '0.8' : '0'
-  }
-
   if (powerStripFill) {
     powerStripFill.style.height = `${powerPercent}%`
     powerStripFill.style.width = ''
     powerStripFill.style.opacity = isMyTurn ? '1' : '0.35'
   }
 
-  // --- 4. 动态交互特效 ---
-  // 计算动态 HSL 用于外发光，与力度条末端颜色同步
-  const hue = 180 * (1 - powerPercent / 100)
-
-  // 为活跃玩家卡片添加动态阴影增强视觉反馈
-  if (powerPercent > 0) {
-    activePlayerCard.style.boxShadow = `0 0 ${15 + powerPercent/4}px hsla(${hue}, 85%, 50%, ${0.2 + powerPercent/200}), inset 0 0 10px hsla(${hue}, 85%, 50%, 0.1)`
-  } else {
-    activePlayerCard.style.boxShadow = ''
+  if (powerStrip) {
+    powerStrip.classList.toggle('has-power', powerPercent > 0)
   }
-  inactivePlayerCard.style.boxShadow = ''
 
-  // --- 5. 渲染列表与计时器 ---
+  if (aimWheel) {
+    aimWheel.classList.toggle('is-disabled', !isMyTurn || game.ballInHand || game.isGameOver)
+    aimWheel.style.setProperty('--aim-arc-rotation', `${game.aimAngle}rad`)
+  }
+
+  if (aimWheelIndicator) {
+    aimWheelIndicator.style.transform = 'translateY(-50%)'
+  }
+
+  // --- 4. 渲染列表与计时器 ---
   updateTimerUi(game)
   renderBallList(game, 1, game.playerGroups[1])
   renderBallList(game, 2, game.playerGroups[2])

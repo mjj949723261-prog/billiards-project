@@ -113,6 +113,8 @@ export class BilliardsGame {
     this.placingCue = false
     /** @type {boolean} 当前母球放置位置是否合法。 */
     this.cuePlacementValid = true
+    /** @type {boolean} 是否正在通过右侧方向盘微调球杆角度。 */
+    this.adjustingAimWheel = false
     /** @type {Vec2|null} 母球上一个合法的放置位置。 */
     this.lastValidCuePosition = null
     /** @type {Array} 进球得分动画效果数组。 */

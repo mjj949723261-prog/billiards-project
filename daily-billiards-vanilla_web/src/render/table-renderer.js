@@ -12,7 +12,7 @@ import {
   TABLE_HEIGHT,
   TABLE_WIDTH,
 } from '../constants.js?v=20260429-room-entry-fix'
-import { hasDebugOverlay, isPortraitLayout, shouldRotateGameplayStage } from '../layout/mode.js'
+import { hasDebugAlwaysDrag, hasDebugOverlay, isPortraitLayout, shouldRotateGameplayStage } from '../layout/mode.js'
 import { Vec2 } from '../math.js'
 import { GameClient } from '../network/game-client.js'
 
@@ -368,8 +368,8 @@ function drawAimAndCue(game, ctx) {
   const cueRenderPos = game.cueBall.renderPos || game.cueBall.pos
 
   // 只有轮到我时，才根据我的鼠标位置更新本地瞄准角度
-  if (isMyTurn && game.hasPointerInput && !game.isDragging) {
-    const hoverAim = cueRenderPos.clone().sub(game.mousePos)
+  if (isMyTurn && game.hasPointerInput && hasDebugAlwaysDrag(window) && !game.isDragging && !game.adjustingAimWheel) {
+    const hoverAim = game.mousePos.clone().sub(cueRenderPos)
     if (hoverAim.length() > 4) game.aimAngle = Math.atan2(hoverAim.y, hoverAim.x)
   }
 

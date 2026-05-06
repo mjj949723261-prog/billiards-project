@@ -4,7 +4,7 @@ import {
   PLAYABLE_AREA_INSET_RIGHT, PLAYABLE_AREA_INSET_TOP, POCKET_RADIUS,
   RAIL_THICKNESS, RELEASE_FLASH_DURATION, TABLE_HEIGHT, TABLE_WIDTH
 } from '../constants.js?v=20260429-room-entry-fix';
-import { hasDebugOverlay, isPortraitLayout } from '../layout/mode.js';
+import { hasDebugAlwaysDrag, hasDebugOverlay, isPortraitLayout } from '../layout/mode.js';
 import { Vec2 } from '../math.js';
 import { GameClient } from '../network/game-client.js';
 import { shouldRenderAimGuides, getRenderedCuePullDistance, getRenderedCuePowerRatio, getPocketVisualCenters, resolveTableSurfaceSourceRect } from './table-renderer.js';
@@ -599,8 +599,8 @@ export class PixiRenderer {
     drawAimAndCue(game) {
         const isMyTurn = (game.currentPlayer === game.playerIndex);
         const cueRenderPos = game.cueBall.renderPos || game.cueBall.pos;
-        if (isMyTurn && game.hasPointerInput && !game.isDragging) {
-            const hoverAim = cueRenderPos.clone().sub(game.mousePos);
+        if (isMyTurn && game.hasPointerInput && hasDebugAlwaysDrag(window) && !game.isDragging && !game.adjustingAimWheel) {
+            const hoverAim = game.mousePos.clone().sub(cueRenderPos);
             if (hoverAim.length() > 4) game.aimAngle = Math.atan2(hoverAim.y, hoverAim.x);
         }
 

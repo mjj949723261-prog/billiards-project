@@ -644,22 +644,7 @@ body {
 }
 
 .power-bar {
-  position: absolute;
-  background: linear-gradient(var(--power-dir, to right), rgba(22, 163, 74, 0.2), rgba(251, 191, 36, 0.5), rgba(220, 38, 38, 0.7));
-  transition: width 0.1s linear, height 0.1s linear, opacity 0.2s ease;
-  z-index: -1;
-  opacity: 0;
-  border-radius: 16px;
-  pointer-events: none;
-}
-
-/* 默认（横屏）：纵向增长，从下往上 */
-.power-bar {
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 0%;
-  --power-dir: to top;
+  display: none;
 }
 
 /* --- 游戏容器 --- */
@@ -715,6 +700,8 @@ body {
   position: relative;
   width: clamp(28px, 4vw, 34px);
   height: min(72vh, 520px);
+  touch-action: none;
+  user-select: none;
   border-radius: 999px;
   background:
     linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.02)),
@@ -722,6 +709,22 @@ body {
   border: 1px solid rgba(255,255,255,0.12);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05), 0 10px 24px rgba(0,0,0,0.28);
   overflow: hidden;
+  transition: transform 0.12s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.power-strip.is-active {
+  transform: scale(1.03);
+  border-color: rgba(251, 191, 36, 0.55);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.08),
+    0 0 0 1px rgba(251, 191, 36, 0.28),
+    0 12px 28px rgba(0,0,0,0.34);
+}
+
+.power-strip.has-power .power-strip-fill {
+  box-shadow:
+    0 0 22px rgba(251, 191, 36, 0.34),
+    0 0 10px rgba(52, 211, 153, 0.18);
 }
 
 .power-strip-fill {
@@ -767,45 +770,170 @@ body {
   bottom: 8px;
 }
 
-.aim-wheel {
+.control-column-right {
   position: relative;
-  width: clamp(52px, 7vw, 72px);
-  height: clamp(52px, 7vw, 72px);
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
+  justify-content: flex-end;
+  overflow: visible;
 }
 
-.aim-wheel-ring {
+.aim-arc {
+  position: relative;
+  width: clamp(274px, 34vw, 378px);
+  height: clamp(274px, 34vw, 378px);
+  touch-action: none;
+  user-select: none;
+  margin-right: clamp(-214px, -26vw, -154px);
+  border-radius: 50%;
+  display: block;
+  overflow: visible;
+  --aim-arc-rotation: 0rad;
+  --aim-arc-inner-radius: 53.8%;
+  --aim-arc-outer-radius: 74.8%;
+  --aim-arc-mask-feather: 0.9%;
+  --aim-arc-sector-clip: polygon(0% 10%, 16% 4%, 40% 2%, 61% 10%, 61% 90%, 40% 98%, 16% 96%, 0% 90%);
+  transition: transform 0.12s ease, opacity 0.18s ease;
+  filter: drop-shadow(0 14px 28px rgba(0,0,0,0.3));
+}
+
+.aim-arc.is-active {
+  transform: scale(1.03);
+}
+
+.aim-arc.is-stepping::before {
+  content: none;
+}
+
+.aim-arc.is-stepping .aim-arc-band {
+  filter:
+    drop-shadow(0 0 14px rgba(128, 199, 255, 0.28))
+    drop-shadow(0 0 22px rgba(234, 244, 255, 0.2));
+}
+
+.aim-arc.is-stepping .aim-arc-pointer {
+  filter: drop-shadow(0 0 14px rgba(232, 185, 70, 0.42));
+}
+
+.aim-arc.is-disabled {
+  opacity: 0.72;
+}
+
+.aim-arc-band,
+.aim-arc-ticks {
   position: absolute;
   inset: 0;
   border-radius: 50%;
+  pointer-events: none;
+  clip-path: var(--aim-arc-sector-clip);
+}
+
+.aim-arc-band {
   background:
-    radial-gradient(circle at 35% 30%, rgba(255,255,255,0.34), rgba(255,255,255,0) 30%),
-    linear-gradient(180deg, rgba(255,255,255,0.14), rgba(0,0,0,0.12)),
-    #1a1e27;
-  border: 1px solid rgba(255,255,255,0.14);
-  box-shadow: inset 0 0 0 5px rgba(0,0,0,0.18), 0 10px 24px rgba(0,0,0,0.28);
+    conic-gradient(
+      from -90deg,
+      rgba(247, 250, 255, 0.98) 104deg,
+      rgba(208, 222, 242, 0.98) 182deg,
+      rgba(250, 252, 255, 0.98) 250deg,
+      rgba(196, 212, 232, 0.98) 320deg,
+      rgba(247, 250, 255, 0.98) 360deg
+    );
+  -webkit-mask:
+    radial-gradient(
+      circle,
+      transparent 0 calc(var(--aim-arc-inner-radius) - var(--aim-arc-mask-feather)),
+      #000 var(--aim-arc-inner-radius) var(--aim-arc-outer-radius),
+      transparent calc(var(--aim-arc-outer-radius) + var(--aim-arc-mask-feather))
+    );
+  mask:
+    radial-gradient(
+      circle,
+      transparent 0 calc(var(--aim-arc-inner-radius) - var(--aim-arc-mask-feather)),
+      #000 var(--aim-arc-inner-radius) var(--aim-arc-outer-radius),
+      transparent calc(var(--aim-arc-outer-radius) + var(--aim-arc-mask-feather))
+    );
+  box-shadow:
+    inset 0 0 10px rgba(255,255,255,0.16),
+    inset 0 0 30px rgba(152, 172, 198, 0.18);
 }
 
-.aim-wheel-core {
+.aim-arc-ticks {
+  transform: rotate(var(--aim-arc-rotation));
+  background:
+    repeating-conic-gradient(
+      from -90deg,
+      rgba(24, 31, 43, 0) 0deg 2deg,
+      rgba(26, 33, 46, 0.96) 2deg 2.55deg,
+      rgba(248, 251, 255, 0.98) 2.55deg 3.05deg,
+      rgba(24, 31, 43, 0) 3.05deg 6.7deg
+    );
+  -webkit-mask:
+    radial-gradient(
+      circle,
+      transparent 0 calc(var(--aim-arc-inner-radius) - var(--aim-arc-mask-feather)),
+      #000 var(--aim-arc-inner-radius) var(--aim-arc-outer-radius),
+      transparent calc(var(--aim-arc-outer-radius) + var(--aim-arc-mask-feather))
+    );
+  mask:
+    radial-gradient(
+      circle,
+      transparent 0 calc(var(--aim-arc-inner-radius) - var(--aim-arc-mask-feather)),
+      #000 var(--aim-arc-inner-radius) var(--aim-arc-outer-radius),
+      transparent calc(var(--aim-arc-outer-radius) + var(--aim-arc-mask-feather))
+    );
+  transition: transform 0.08s linear;
+  opacity: 0.98;
+}
+
+.aim-arc-hub {
   position: absolute;
-  width: 34%;
-  height: 34%;
+  inset: 18%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(251,191,36,0.9), rgba(251,191,36,0.3));
-  box-shadow: 0 0 16px rgba(251,191,36,0.22);
+  background:
+    radial-gradient(circle at 46% 48%, rgba(14, 17, 24, 0.98), rgba(6, 8, 12, 0.98));
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.03),
+    inset -18px 0 30px rgba(0,0,0,0.28);
 }
 
-.aim-wheel-indicator {
+.aim-arc-pointer {
   position: absolute;
-  top: 9%;
-  left: 50%;
-  width: 3px;
-  height: 24%;
+  left: 48px;
+  top: 50%;
+  width: 74px;
+  height: 26px;
+  transform: translateY(-50%);
+  background: transparent;
+  transition: transform 0.08s linear, filter 0.12s ease;
+}
+
+.aim-arc-pointer::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  width: 52px;
+  height: 4px;
+  transform: translateY(-50%);
   border-radius: 999px;
-  transform: translateX(-50%);
-  background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.2));
+  background:
+    linear-gradient(90deg, rgba(255, 245, 198, 0.96), rgba(231, 182, 61, 0.98) 42%, rgba(148, 97, 13, 0.98));
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.24),
+    0 0 10px rgba(232, 185, 70, 0.24);
+}
+
+.aim-arc-pointer::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform: translateY(-50%);
+  border-top: 10px solid transparent;
+  border-bottom: 10px solid transparent;
+  border-right: 18px solid rgba(231, 182, 61, 0.98);
+  filter: drop-shadow(0 0 8px rgba(232, 185, 70, 0.28));
 }
 
 .side-ball-list {
@@ -2562,9 +2690,10 @@ body {
     height: min(68vh, 420px);
   }
 
-  .aim-wheel {
-    width: clamp(46px, calc(var(--gameplay-semantic-long) * 0.065), 60px);
-    height: clamp(46px, calc(var(--gameplay-semantic-long) * 0.065), 60px);
+  .aim-arc {
+    width: clamp(244px, calc(var(--gameplay-semantic-long) * 0.36), 332px);
+    height: clamp(244px, calc(var(--gameplay-semantic-long) * 0.36), 332px);
+    margin-right: clamp(-188px, calc(var(--gameplay-semantic-long) * -0.24), -132px);
   }
 
   .network-indicator {
