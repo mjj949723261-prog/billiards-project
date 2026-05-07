@@ -37,21 +37,54 @@ export function bindGameInput(game) {
   const debugAlwaysDrag = hasDebugAlwaysDrag(window)
   const powerStrip = document.getElementById('power-strip')
   const aimWheel = document.getElementById('aim-wheel')
+  const leftControlColumn = document.querySelector('.control-column-left')
+  const rightControlColumn = document.querySelector('.control-column-right')
   let activeAimPointerId = null
   let activePowerPointerId = null
   let lastAimPointerY = 0
   let pendingAimDegrees = 0
   const AIM_STEP_RADIANS = Math.PI / 180
   const AIM_STEP_DEGREES = 1
-  // 保留 1 度最小步进，按圆弧切线方向位移累加拨轮步进。
-  const AIM_PIXELS_PER_STEP = 1
-  const AIM_ACCEL_START_PIXELS = 10
-  const AIM_ACCEL_MAX_MULTIPLIER = 3.2
+  // 右侧直立拨轮按竖向位移累加步进，保持细腻但仍有滚动反馈。
+  const AIM_PIXELS_PER_STEP = 4
+  const AIM_ACCEL_START_PIXELS = 14
+  const AIM_ACCEL_MAX_MULTIPLIER = 2.2
   const AIM_WHEEL_SCROLL_STEP_DEGREES = 0.125
+  const AIM_WHEEL_TICK_PITCH = 52
+  const AIM_WHEEL_PIXELS_PER_DEGREE = 88
   let aimWheelStepPulseTimer = null
   let aimWheelActiveTimer = null
-  const AIM_ARC_INNER_RADIUS_RATIO = 0.58
-  const AIM_ARC_OUTER_RADIUS_RATIO = 0.72
+
+  const isSideControlGestureActive = () => activePowerPointerId !== null || activeAimPointerId !== null
+
+  const getPrimaryClientPoint = (e) => {
+    const touch = e.touches?.[0] || e.changedTouches?.[0]
+    return touch || e
+  }
+
+  const isPointInsideElement = (el, point) => {
+    if (!el || point?.clientX === undefined || point?.clientY === undefined) return false
+    const rect = el.getBoundingClientRect()
+    return (
+      point.clientX >= rect.left &&
+      point.clientX <= rect.right &&
+      point.clientY >= rect.top &&
+      point.clientY <= rect.bottom
+    )
+  }
+
+  const isInsideSideControlColumn = (e) => {
+    const point = getPrimaryClientPoint(e)
+    return isPointInsideElement(leftControlColumn, point) || isPointInsideElement(rightControlColumn, point)
+  }
+
+  const releasePointerCaptureSafely = (el, pointerId) => {
+    try {
+      el?.releasePointerCapture?.(pointerId)
+    } catch (_) {
+      // Pointer capture may already be lost after synthetic events or browser cancellation.
+    }
+  }
 
   const canControlTurn = () => {
     if ((!GameClient.isMyTurn || game.isTurnLocked || game.roomPhase !== 'PLAYING') && !debugAlwaysDrag) return false
@@ -123,10 +156,19 @@ export function bindGameInput(game) {
     }, 70)
   }
 
+  const syncAimWheelVisual = () => {
+    if (!aimWheel) return
+    const aimDegrees = (game.aimAngle * 180) / Math.PI
+    const aimWheelOffset = ((aimDegrees * AIM_WHEEL_PIXELS_PER_DEGREE) % AIM_WHEEL_TICK_PITCH + AIM_WHEEL_TICK_PITCH) % AIM_WHEEL_TICK_PITCH
+    aimWheel.style.setProperty('--aim-arc-rotation', `${game.aimAngle}rad`)
+    aimWheel.style.setProperty('--aim-wheel-offset', `${aimWheelOffset}px`)
+  }
+
   const applyAimWheelStepCount = (stepCount) => {
     if (stepCount === 0) return false
     game.aimAngle += stepCount * AIM_STEP_RADIANS
     game.showRemoteCue = false
+    syncAimWheelVisual()
     pulseAimWheelFeedback()
     GameClient.sendAim({ aimAngle: game.aimAngle, pullDistance: game.pullDistance })
     return true
@@ -155,27 +197,20 @@ export function bindGameInput(game) {
     return applyAimWheelStepCount(stepCount)
   }
 
-  const getAimArcPointerState = (clientX, clientY) => {
+  const isInsideAimWheel = (clientX, clientY) => {
     if (!aimWheel) return null
     const rect = aimWheel.getBoundingClientRect()
-    const centerX = rect.left + rect.width / 2
-    const centerY = rect.top + rect.height / 2
-    const dx = clientX - centerX
-    const dy = clientY - centerY
-    const radius = Math.hypot(dx, dy)
-    const outerRadius = rect.width * AIM_ARC_OUTER_RADIUS_RATIO
-    const innerRadius = rect.width * AIM_ARC_INNER_RADIUS_RATIO
-    const angle = Math.atan2(dy, dx)
-    const visibleArcRightEdge = rect.left + rect.width * 0.62
-    // 只认当前屏幕里真正可见的圆弧带，而不是屏幕外那颗完整大圆。
-    const insideArcBand = radius >= innerRadius && radius <= outerRadius && clientX <= visibleArcRightEdge
-    return { angle, insideArcBand }
+    return (
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+    )
   }
 
   const beginAimWheelControl = (e) => {
     if (!aimWheel || game.ballInHand || !canControlShot()) return
-    const pointerState = getAimArcPointerState(e.clientX, e.clientY)
-    if (!pointerState?.insideArcBand) return
+    if (!isInsideAimWheel(e.clientX, e.clientY)) return
     game.audio.unlock()
     // 暂停“鼠标悬停即瞄准”，避免右侧拨轮刚改完角度就被旧鼠标位置抢回去。
     game.hasPointerInput = false
@@ -186,6 +221,7 @@ export function bindGameInput(game) {
     game.showRemoteCue = false
     aimWheel.classList.add('is-active')
     aimWheel.setPointerCapture?.(e.pointerId)
+    e.stopPropagation()
     e.preventDefault()
   }
 
@@ -193,8 +229,8 @@ export function bindGameInput(game) {
     if (activeAimPointerId === null || e.pointerId !== activeAimPointerId || game.ballInHand) return
     const deltaY = e.clientY - lastAimPointerY
     lastAimPointerY = e.clientY
-    // 每次新手势都应该从当前球杆角度继续累加，而不是因重新落手位置不同重算方向语义。
     stepAimWheelByDeltaY(deltaY)
+    e.stopPropagation()
     e.preventDefault()
   }
 
@@ -235,12 +271,13 @@ export function bindGameInput(game) {
       game.adjustingAimWheel = false
     }
 
+    e.stopPropagation()
     e.preventDefault()
   }
 
   const clearAimWheelControl = (e) => {
     if (activeAimPointerId === null || e.pointerId !== activeAimPointerId) return
-    aimWheel.releasePointerCapture?.(e.pointerId)
+    releasePointerCaptureSafely(aimWheel, e.pointerId)
     activeAimPointerId = null
     pendingAimDegrees = 0
     game.adjustingAimWheel = false
@@ -270,23 +307,26 @@ export function bindGameInput(game) {
     if (!powerStrip || game.ballInHand || !canControlShot()) return
     game.audio.unlock()
     activePowerPointerId = e.pointerId
+    game.hasPointerInput = false
     game.isDragging = true
     game.showRemoteCue = false
     powerStrip.classList.add('is-active')
     powerStrip.setPointerCapture?.(e.pointerId)
     updatePowerFromClientY(e.clientY)
+    e.stopPropagation()
     e.preventDefault()
   }
 
   const movePowerStripControl = (e) => {
     if (activePowerPointerId === null || e.pointerId !== activePowerPointerId) return
     updatePowerFromClientY(e.clientY)
+    e.stopPropagation()
     e.preventDefault()
   }
 
   const endPowerStripControl = (e) => {
     if (activePowerPointerId === null || e.pointerId !== activePowerPointerId) return
-    powerStrip.releasePointerCapture?.(e.pointerId)
+    releasePointerCaptureSafely(powerStrip, e.pointerId)
     activePowerPointerId = null
     powerStrip.classList.remove('is-active')
     releaseShotIfNeeded()
@@ -294,6 +334,7 @@ export function bindGameInput(game) {
       GameClient.sendAim({ aimAngle: game.aimAngle, pullDistance: 0 })
     }
     clearDragInteraction(game)
+    e.stopPropagation()
   }
 
   /**
@@ -301,6 +342,11 @@ export function bindGameInput(game) {
    * @param {MouseEvent|TouchEvent} e - 输入事件。
    */
   const start = (e) => {
+    if (isSideControlGestureActive()) return
+    if (isInsideSideControlColumn(e)) {
+      game.hasPointerInput = false
+      return
+    }
     // 联机拦截：如果不是我的回合或回合已锁定，则不处理输入
     if ((!GameClient.isMyTurn || game.isTurnLocked || game.roomPhase !== 'PLAYING') && !debugAlwaysDrag) return;
     if (game.awaitingSettledSync && !debugAlwaysDrag) return;
@@ -340,6 +386,11 @@ export function bindGameInput(game) {
    * @param {MouseEvent|TouchEvent} e - 输入事件。
    */
   const move = (e) => {
+    if (isSideControlGestureActive()) return
+    if (isInsideSideControlColumn(e)) {
+      game.hasPointerInput = false
+      return
+    }
     if ((!GameClient.isMyTurn || game.isTurnLocked || game.roomPhase !== 'PLAYING') && !debugAlwaysDrag) return;
     if (game.awaitingSettledSync && !debugAlwaysDrag) return;
 
@@ -389,6 +440,7 @@ export function bindGameInput(game) {
    * 鼠标/触摸结束的内部处理函数。
    */
   const end = () => {
+    if (isSideControlGestureActive()) return
     if ((!GameClient.isMyTurn || (game.roomPhase !== 'PLAYING' && !game.ballInHand)) && !debugAlwaysDrag) {
       clearDragInteraction(game)
       return

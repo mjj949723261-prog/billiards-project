@@ -88,6 +88,9 @@ export function updateGameUi(game) {
   if (aimWheel) {
     aimWheel.classList.toggle('is-disabled', !isMyTurn || game.ballInHand || game.isGameOver)
     aimWheel.style.setProperty('--aim-arc-rotation', `${game.aimAngle}rad`)
+    const aimWheelTickPitch = 52
+    const aimWheelOffset = ((((game.aimAngle * 180) / Math.PI) * 88) % aimWheelTickPitch + aimWheelTickPitch) % aimWheelTickPitch
+    aimWheel.style.setProperty('--aim-wheel-offset', `${aimWheelOffset}px`)
   }
 
   if (aimWheelIndicator) {

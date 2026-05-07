@@ -667,7 +667,7 @@ body {
   min-height: 0;
   min-width: 0;
   display: grid;
-  grid-template-columns: clamp(54px, 7vw, 76px) minmax(0, 1fr) clamp(54px, 7vw, 76px);
+  grid-template-columns: clamp(54px, 7vw, 76px) minmax(0, 1fr) clamp(72px, 8vw, 92px);
   align-items: center;
   gap: clamp(6px, 1vw, 12px);
   padding:
@@ -778,21 +778,60 @@ body {
 
 .aim-arc {
   position: relative;
-  width: clamp(274px, 34vw, 378px);
-  height: clamp(274px, 34vw, 378px);
+  width: clamp(58px, 6vw, 72px);
+  height: min(72vh, 520px);
   touch-action: none;
   user-select: none;
-  margin-right: clamp(-214px, -26vw, -154px);
-  border-radius: 50%;
+  margin-right: 0;
+  border-radius: 999px;
   display: block;
-  overflow: visible;
+  overflow: hidden;
   --aim-arc-rotation: 0rad;
-  --aim-arc-inner-radius: 53.8%;
-  --aim-arc-outer-radius: 74.8%;
-  --aim-arc-mask-feather: 0.9%;
-  --aim-arc-sector-clip: polygon(0% 10%, 16% 4%, 40% 2%, 61% 10%, 61% 90%, 40% 98%, 16% 96%, 0% 90%);
+  --aim-wheel-offset: 0px;
   transition: transform 0.12s ease, opacity 0.18s ease;
-  filter: drop-shadow(0 14px 28px rgba(0,0,0,0.3));
+  filter:
+    drop-shadow(0 18px 32px rgba(0,0,0,0.34))
+    drop-shadow(0 0 14px rgba(255,255,255,0.03));
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.02)),
+    linear-gradient(90deg, rgba(8, 10, 15, 0.98), rgba(26, 31, 39, 0.96) 50%, rgba(8, 10, 15, 0.98));
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.04),
+    inset 12px 0 18px rgba(255,255,255,0.03),
+    inset -12px 0 22px rgba(0,0,0,0.42);
+}
+
+.aim-arc::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border-radius: 999px;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02) 18%, rgba(255,255,255,0.01) 82%, rgba(255,255,255,0.08)),
+    linear-gradient(90deg, rgba(255,255,255,0.08), rgba(255,255,255,0.01) 34%, rgba(0,0,0,0.18) 70%, rgba(0,0,0,0.26));
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.08),
+    inset 0 18px 24px rgba(255,255,255,0.03),
+    inset 0 -18px 24px rgba(0,0,0,0.18);
+}
+
+.aim-arc::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255, 218, 110, 0.92) 20%, rgba(255, 236, 165, 0.98) 50%, rgba(255, 218, 110, 0.92) 80%, rgba(255,255,255,0));
+  box-shadow:
+    0 0 10px rgba(255, 210, 94, 0.18),
+    0 0 20px rgba(255, 210, 94, 0.08);
+  z-index: 3;
 }
 
 .aim-arc.is-active {
@@ -800,7 +839,10 @@ body {
 }
 
 .aim-arc.is-stepping::before {
-  content: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.08),
+    inset 18px 0 28px rgba(0,0,0,0.34),
+    0 0 18px rgba(255,255,255,0.08);
 }
 
 .aim-arc.is-stepping .aim-arc-band {
@@ -820,106 +862,126 @@ body {
 .aim-arc-band,
 .aim-arc-ticks {
   position: absolute;
-  inset: 0;
-  border-radius: 50%;
+  inset: 10px 9px;
+  border-radius: 12px;
   pointer-events: none;
-  clip-path: var(--aim-arc-sector-clip);
+  z-index: 1;
 }
 
 .aim-arc-band {
   background:
-    conic-gradient(
-      from -90deg,
-      rgba(247, 250, 255, 0.98) 104deg,
-      rgba(208, 222, 242, 0.98) 182deg,
-      rgba(250, 252, 255, 0.98) 250deg,
-      rgba(196, 212, 232, 0.98) 320deg,
-      rgba(247, 250, 255, 0.98) 360deg
-    );
-  -webkit-mask:
-    radial-gradient(
-      circle,
-      transparent 0 calc(var(--aim-arc-inner-radius) - var(--aim-arc-mask-feather)),
-      #000 var(--aim-arc-inner-radius) var(--aim-arc-outer-radius),
-      transparent calc(var(--aim-arc-outer-radius) + var(--aim-arc-mask-feather))
-    );
-  mask:
-    radial-gradient(
-      circle,
-      transparent 0 calc(var(--aim-arc-inner-radius) - var(--aim-arc-mask-feather)),
-      #000 var(--aim-arc-inner-radius) var(--aim-arc-outer-radius),
-      transparent calc(var(--aim-arc-outer-radius) + var(--aim-arc-mask-feather))
-    );
+    linear-gradient(90deg, rgba(231, 236, 244, 0.98), rgba(213, 221, 232, 0.98) 46%, rgba(184, 196, 211, 0.96) 100%);
   box-shadow:
-    inset 0 0 10px rgba(255,255,255,0.16),
-    inset 0 0 30px rgba(152, 172, 198, 0.18);
+    inset 8px 0 16px rgba(255,255,255,0.24),
+    inset -10px 0 18px rgba(84, 97, 116, 0.22),
+    0 0 0 1px rgba(255,255,255,0.05);
 }
 
 .aim-arc-ticks {
-  transform: rotate(var(--aim-arc-rotation));
   background:
-    repeating-conic-gradient(
-      from -90deg,
-      rgba(24, 31, 43, 0) 0deg 2deg,
-      rgba(26, 33, 46, 0.96) 2deg 2.55deg,
-      rgba(248, 251, 255, 0.98) 2.55deg 3.05deg,
-      rgba(24, 31, 43, 0) 3.05deg 6.7deg
+    repeating-linear-gradient(
+      180deg,
+      rgba(255,255,255,0) 0 9px,
+      rgba(29, 36, 48, 0.68) 9px 10px,
+      rgba(255,255,255,0) 10px 13px
+    ),
+    repeating-linear-gradient(
+      180deg,
+      rgba(255,255,255,0) 0 51px,
+      rgba(12, 17, 25, 0.86) 51px 53px,
+      rgba(255,255,255,0) 53px 65px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255,255,255,0) 0 46%,
+      rgba(18, 24, 35, 0.58) 46% 52%,
+      rgba(255,255,255,0) 52% 100%
     );
-  -webkit-mask:
-    radial-gradient(
-      circle,
-      transparent 0 calc(var(--aim-arc-inner-radius) - var(--aim-arc-mask-feather)),
-      #000 var(--aim-arc-inner-radius) var(--aim-arc-outer-radius),
-      transparent calc(var(--aim-arc-outer-radius) + var(--aim-arc-mask-feather))
-    );
-  mask:
-    radial-gradient(
-      circle,
-      transparent 0 calc(var(--aim-arc-inner-radius) - var(--aim-arc-mask-feather)),
-      #000 var(--aim-arc-inner-radius) var(--aim-arc-outer-radius),
-      transparent calc(var(--aim-arc-outer-radius) + var(--aim-arc-mask-feather))
-    );
-  transition: transform 0.08s linear;
-  opacity: 0.98;
+  background-position:
+    center var(--aim-wheel-offset),
+    center var(--aim-wheel-offset),
+    center center;
+  transition: background-position 0.06s linear;
+  opacity: 1;
+  filter:
+    drop-shadow(0 0 5px rgba(255,255,255,0.08));
+}
+
+.aim-arc-band::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 50%;
+  height: 42px;
+  transform: translateY(-50%);
+  border-radius: 8px;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.24), rgba(255,255,255,0.03) 18%, rgba(0,0,0,0.16) 82%, rgba(255,255,255,0.14)),
+    linear-gradient(90deg, rgba(10, 13, 20, 0.34), rgba(255,255,255,0.02) 22%, rgba(255,255,255,0.03) 78%, rgba(10, 13, 20, 0.3));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.2),
+    inset 0 -1px 0 rgba(0,0,0,0.2),
+    0 0 0 1px rgba(255,255,255,0.08);
+  z-index: 2;
 }
 
 .aim-arc-hub {
   position: absolute;
+  left: 50%;
+  bottom: 16px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  transform: translateX(-50%);
+  background:
+    radial-gradient(circle at 44% 42%, rgba(36, 43, 56, 0.96), rgba(12, 15, 22, 0.98) 52%, rgba(6, 8, 12, 1) 100%);
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.04),
+    inset -20px 0 30px rgba(0,0,0,0.34),
+    0 0 0 1px rgba(0,0,0,0.28);
+  z-index: 1;
+}
+
+.aim-arc-hub::before {
+  content: '';
+  position: absolute;
   inset: 18%;
   border-radius: 50%;
   background:
-    radial-gradient(circle at 46% 48%, rgba(14, 17, 24, 0.98), rgba(6, 8, 12, 0.98));
-  border: 1px solid rgba(255,255,255,0.08);
-  box-shadow:
-    inset 0 0 0 1px rgba(255,255,255,0.03),
-    inset -18px 0 30px rgba(0,0,0,0.28);
+    radial-gradient(circle at 36% 36%, rgba(255,255,255,0.18), rgba(255,255,255,0.02) 42%, transparent 58%),
+    radial-gradient(circle at 58% 62%, rgba(255,214,102,0.18), rgba(255,214,102,0.02) 34%, transparent 60%);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
 }
 
 .aim-arc-pointer {
   position: absolute;
-  left: 48px;
+  right: 8px;
   top: 50%;
-  width: 74px;
-  height: 26px;
+  width: 26px;
+  height: 16px;
   transform: translateY(-50%);
   background: transparent;
   transition: transform 0.08s linear, filter 0.12s ease;
+  z-index: 4;
 }
 
 .aim-arc-pointer::before {
   content: '';
   position: absolute;
-  left: 14px;
+  left: 10px;
   top: 50%;
-  width: 52px;
+  width: 10px;
   height: 4px;
   transform: translateY(-50%);
   border-radius: 999px;
   background:
-    linear-gradient(90deg, rgba(255, 245, 198, 0.96), rgba(231, 182, 61, 0.98) 42%, rgba(148, 97, 13, 0.98));
+    linear-gradient(90deg, rgba(255, 248, 210, 0.98), rgba(241, 196, 78, 0.98) 38%, rgba(158, 104, 18, 0.98));
   box-shadow:
-    inset 0 0 0 1px rgba(255,255,255,0.24),
-    0 0 10px rgba(232, 185, 70, 0.24);
+    inset 0 0 0 1px rgba(255,255,255,0.26),
+    0 0 12px rgba(232, 185, 70, 0.26);
 }
 
 .aim-arc-pointer::after {
@@ -930,10 +992,25 @@ body {
   width: 0;
   height: 0;
   transform: translateY(-50%);
-  border-top: 10px solid transparent;
-  border-bottom: 10px solid transparent;
-  border-right: 18px solid rgba(231, 182, 61, 0.98);
-  filter: drop-shadow(0 0 8px rgba(232, 185, 70, 0.28));
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-right: 13px solid rgba(238, 191, 73, 0.98);
+  filter: drop-shadow(0 0 10px rgba(232, 185, 70, 0.32));
+}
+
+.aim-arc-pointer:before,
+.aim-arc-pointer:after {
+  pointer-events: none;
+}
+
+.aim-arc-pointer {
+  --aim-pointer-dot: rgba(255, 227, 135, 0.96);
+  filter:
+    drop-shadow(0 0 10px rgba(232, 185, 70, 0.1));
+  background-image:
+    radial-gradient(circle at 88% 50%, var(--aim-pointer-dot) 0 1.5px, rgba(255, 227, 135, 0.18) 1.5px 5px, transparent 5px);
+  background-repeat: no-repeat;
+  background-position: right 2px center;
 }
 
 .side-ball-list {
@@ -2672,7 +2749,7 @@ body {
     grid-template-columns:
       clamp(44px, calc(var(--gameplay-semantic-long) * 0.072), 62px)
       minmax(0, 1fr)
-      clamp(44px, calc(var(--gameplay-semantic-long) * 0.072), 62px);
+      clamp(72px, calc(var(--gameplay-semantic-long) * 0.1), 92px);
     gap: clamp(4px, calc(var(--gameplay-semantic-short) * 0.01), 8px);
     padding:
       0
@@ -2691,9 +2768,9 @@ body {
   }
 
   .aim-arc {
-    width: clamp(244px, calc(var(--gameplay-semantic-long) * 0.36), 332px);
-    height: clamp(244px, calc(var(--gameplay-semantic-long) * 0.36), 332px);
-    margin-right: clamp(-188px, calc(var(--gameplay-semantic-long) * -0.24), -132px);
+    width: clamp(58px, calc(var(--gameplay-semantic-long) * 0.074), 72px);
+    height: min(68vh, 420px);
+    margin-right: 0;
   }
 
   .network-indicator {
