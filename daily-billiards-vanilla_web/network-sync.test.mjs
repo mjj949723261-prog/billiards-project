@@ -1284,6 +1284,8 @@ test('gameplay uses the same semantic long-short sizing model across phone holds
   assert.match(css, /@media \(pointer: coarse\)\s*\{[\s\S]*\.hud-center-slot\s*\{[\s\S]*position:\s*absolute;[\s\S]*left:\s*50%;[\s\S]*z-index:\s*3;/)
   assert.match(css, /@media \(pointer: coarse\)\s*\{[\s\S]*\.side-score-box\s*\{[\s\S]*width:\s*clamp\(50px,\s*calc\(var\(--gameplay-semantic-long\)\s*\*\s*0\.07\),\s*72px\);/)
   assert.match(css, /@media \(pointer: coarse\)\s*\{[\s\S]*\.turn-timer\s*\{[\s\S]*min-width:\s*clamp\(32px,\s*calc\(var\(--gameplay-semantic-short\)\s*\*\s*0\.1\),\s*52px\);/)
+  assert.match(css, /@media \(pointer: coarse\)\s*\{[\s\S]*\.power-strip\s*\{[\s\S]*width:\s*clamp\(24px,\s*calc\(var\(--gameplay-semantic-long\)\s*\*\s*0\.035\),\s*30px\);[\s\S]*height:\s*min\(calc\(var\(--gameplay-semantic-short\)\s*\*\s*0\.68\),\s*420px\);/)
+  assert.match(css, /@media \(pointer: coarse\)\s*\{[\s\S]*\.aim-arc\s*\{[\s\S]*width:\s*clamp\(58px,\s*calc\(var\(--gameplay-semantic-long\)\s*\*\s*0\.074\),\s*72px\);[\s\S]*height:\s*min\(calc\(var\(--gameplay-semantic-short\)\s*\*\s*0\.68\),\s*420px\);/)
   assert.match(css, /@media \(pointer: coarse\)\s*\{[\s\S]*\.mini-ball\s*\{[\s\S]*width:\s*clamp\(10px,\s*calc\(var\(--gameplay-semantic-short\)\s*\*\s*0\.032\),\s*16px\);/)
   assert.match(css, /@media \(pointer: coarse\)\s*\{[\s\S]*\.player-name\s*\{[\s\S]*writing-mode:\s*vertical-rl;/)
 
@@ -1298,6 +1300,11 @@ test('gameplay uses the same semantic long-short sizing model across phone holds
   assert.match(gameSource, /const shouldRemapInput = shouldRemapGameplayInput\(document, window\)/)
   assert.match(tableRendererSource, /import \{ isPortraitLayout, shouldRotateGameplayStage \} from '\.\.\/layout\/mode\.js'/)
   assert.match(tableRendererSource, /const isPortrait = shouldRotateGameplayStage\(document, window\)/)
+
+  const coarseGameplayBlock = css.match(/@media \(pointer: coarse\)\s*\{([\s\S]*?)\}\s*body\.layout-landscape\.pointer-coarse\.viewport-portrait #auth-panel/)?.[1] ?? ''
+  const gameplayScopedBlock = coarseGameplayBlock.slice(coarseGameplayBlock.indexOf('#app-wrapper'))
+  const normalizedGameplayBlock = gameplayScopedBlock.replace(/100vw|100vh|100dvw|100dvh/g, '')
+  assert.doesNotMatch(normalizedGameplayBlock, /\b\d+(?:\.\d+)?(?:vw|vh)\b/)
 })
 
 test('portrait coarse-pointer viewports keep the landscape-semantic UI visible without a rotate prompt', () => {
@@ -1309,6 +1316,43 @@ test('portrait coarse-pointer viewports keep the landscape-semantic UI visible w
   assert.doesNotMatch(css, /#rotate-device-overlay\s*\{/)
   assert.doesNotMatch(css, /body\.layout-landscape\.pointer-coarse\.viewport-portrait #ui-layer,\s*[\s\S]*#app-wrapper\s*\{[\s\S]*visibility:\s*hidden;[\s\S]*pointer-events:\s*none;/)
   assert.match(css, /body\.layout-landscape\.pointer-coarse\.viewport-portrait #app-wrapper\s*\{[\s\S]*transform:\s*translate\(-50%,\s*-50%\)\s*rotate\(90deg\);/)
+})
+
+test('mobile gameplay side controls size their long edge from the semantic short side', () => {
+  const css = fs.readFileSync(new URL('./style.css', import.meta.url), 'utf8')
+
+  assert.match(css, /@media \(pointer: coarse\)\s*\{[\s\S]*\.power-strip\s*\{[\s\S]*width:\s*clamp\(24px,\s*calc\(var\(--gameplay-semantic-long\)\s*\*\s*0\.035\),\s*30px\);[\s\S]*height:\s*min\(calc\(var\(--gameplay-semantic-short\)\s*\*\s*0\.68\),\s*420px\);/)
+  assert.match(css, /@media \(pointer: coarse\)\s*\{[\s\S]*\.aim-arc\s*\{[\s\S]*width:\s*clamp\(58px,\s*calc\(var\(--gameplay-semantic-long\)\s*\*\s*0\.074\),\s*72px\);[\s\S]*height:\s*min\(calc\(var\(--gameplay-semantic-short\)\s*\*\s*0\.68\),\s*420px\);/)
+
+  const coarseGameplayBlock = css.match(/@media \(pointer: coarse\)\s*\{([\s\S]*?)\}\s*body\.layout-landscape\.pointer-coarse\.viewport-portrait #auth-panel/)?.[1] ?? ''
+  const gameplayControlsBlock = coarseGameplayBlock.slice(coarseGameplayBlock.indexOf('.power-strip'))
+  const normalizedGameplayControlsBlock = gameplayControlsBlock.replace(/100vw|100vh|100dvw|100dvh/g, '')
+  assert.doesNotMatch(normalizedGameplayControlsBlock, /\.power-strip\s*\{[\s\S]*height:\s*min\([^)]*\bvh\b/)
+  assert.doesNotMatch(normalizedGameplayControlsBlock, /\.aim-arc\s*\{[\s\S]*height:\s*min\([^)]*\bvh\b/)
+})
+
+test('mobile gameplay safe-area insets follow landscape semantics in portrait-held mode', () => {
+  const css = fs.readFileSync(new URL('./style.css', import.meta.url), 'utf8')
+
+  assert.match(css, /body\.layout-landscape\.pointer-coarse\.viewport-landscape #app-wrapper\s*\{[\s\S]*--gameplay-safe-top:\s*env\(safe-area-inset-top,\s*0px\);[\s\S]*--gameplay-safe-right:\s*env\(safe-area-inset-right,\s*0px\);[\s\S]*--gameplay-safe-bottom:\s*env\(safe-area-inset-bottom,\s*0px\);[\s\S]*--gameplay-safe-left:\s*env\(safe-area-inset-left,\s*0px\);/)
+  assert.match(css, /body\.layout-landscape\.pointer-coarse\.viewport-portrait #app-wrapper\s*\{[\s\S]*--gameplay-safe-top:\s*env\(safe-area-inset-right,\s*0px\);[\s\S]*--gameplay-safe-right:\s*env\(safe-area-inset-bottom,\s*0px\);[\s\S]*--gameplay-safe-bottom:\s*env\(safe-area-inset-left,\s*0px\);[\s\S]*--gameplay-safe-left:\s*env\(safe-area-inset-top,\s*0px\);/)
+  assert.match(css, /--hud-top-pad-top:\s*max\(4px,\s*var\(--gameplay-safe-top\)\s*\+\s*2px\);/)
+  assert.match(css, /--hud-top-pad-right:\s*max\(58px,\s*var\(--gameplay-safe-right\)\s*\+\s*52px\);/)
+  assert.match(css, /--hud-top-pad-left:\s*max\(58px,\s*var\(--gameplay-safe-left\)\s*\+\s*52px\);/)
+  assert.match(css, /--hud-floating-top:\s*max\(10px,\s*var\(--gameplay-safe-top\)\s*\+\s*8px\);/)
+  assert.match(css, /--hud-floating-right:\s*max\(10px,\s*var\(--gameplay-safe-right\)\s*\+\s*8px\);/)
+  assert.match(css, /--hud-floating-left:\s*max\(10px,\s*var\(--gameplay-safe-left\)\s*\+\s*8px\);/)
+  assert.match(css, /--room-status-bottom:\s*max\(10px,\s*var\(--gameplay-safe-bottom\)\s*\+\s*8px\);/)
+  assert.match(css, /--room-status-left:\s*max\(10px,\s*var\(--gameplay-safe-left\)\s*\+\s*8px\);/)
+  assert.match(css, /@media \(pointer: coarse\)\s*\{[\s\S]*--hud-floating-top:\s*max\(8px,\s*var\(--gameplay-safe-top\)\s*\+\s*6px\);/)
+  assert.match(css, /@media \(pointer: coarse\)\s*\{[\s\S]*--hud-floating-right:\s*max\(8px,\s*var\(--gameplay-safe-right\)\s*\+\s*6px\);/)
+  assert.match(css, /@media \(pointer: coarse\)\s*\{[\s\S]*--hud-floating-left:\s*max\(8px,\s*var\(--gameplay-safe-left\)\s*\+\s*6px\);/)
+  assert.match(css, /@media \(pointer: coarse\)\s*\{[\s\S]*--room-status-bottom:\s*max\(8px,\s*var\(--gameplay-safe-bottom\)\s*\+\s*6px\);/)
+  assert.match(css, /@media \(pointer: coarse\)\s*\{[\s\S]*--room-status-left:\s*max\(8px,\s*var\(--gameplay-safe-left\)\s*\+\s*6px\);/)
+  assert.match(css, /\.top-hud\s*\{[\s\S]*padding:\s*[\s\S]*var\(--hud-top-pad-top\)[\s\S]*var\(--hud-top-pad-right\)[\s\S]*var\(--hud-top-pad-bottom\)[\s\S]*var\(--hud-top-pad-left\);/)
+  assert.match(css, /\.hud-floating-actions-left\s*\{[\s\S]*left:\s*var\(--hud-floating-left\);/)
+  assert.match(css, /\.hud-floating-actions-right\s*\{[\s\S]*right:\s*var\(--hud-floating-right\);/)
+  assert.match(css, /@media \(pointer: coarse\)\s*\{[\s\S]*\.play-area\s*\{[\s\S]*max\(8px,\s*var\(--gameplay-safe-right\)\s*\+\s*6px\)[\s\S]*max\(8px,\s*var\(--gameplay-safe-bottom\)\s*\+\s*6px\)[\s\S]*max\(8px,\s*var\(--gameplay-safe-left\)\s*\+\s*6px\);/)
 })
 
 test('gameplay fits table cloth first and treats rail thickness as a separate visual layer', () => {

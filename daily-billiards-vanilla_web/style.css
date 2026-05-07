@@ -4,9 +4,10 @@
 }
 
 :root {
-  --hud-top-pad-top: max(4px, env(safe-area-inset-top, 0px) + 2px);
-  --hud-top-pad-side: max(58px, env(safe-area-inset-right, 0px) + 52px);
+  --hud-top-pad-top: max(4px, var(--gameplay-safe-top) + 2px);
+  --hud-top-pad-right: max(58px, var(--gameplay-safe-right) + 52px);
   --hud-top-pad-bottom: 2px;
+  --hud-top-pad-left: max(58px, var(--gameplay-safe-left) + 52px);
   --hud-main-width: min(100%, 760px);
   --hud-main-col-width: 248px;
   --hud-main-gap: 6px;
@@ -27,14 +28,15 @@
   --hud-mini-ball-size: 14px;
   --hud-mini-ball-label-size: 7px;
   --hud-mini-ball-font-size: 5px;
-  --hud-floating-top: max(10px, env(safe-area-inset-top, 0px) + 8px);
-  --hud-floating-side: max(10px, env(safe-area-inset-right, 0px) + 8px);
+  --hud-floating-top: max(10px, var(--gameplay-safe-top) + 8px);
+  --hud-floating-right: max(10px, var(--gameplay-safe-right) + 8px);
+  --hud-floating-left: max(10px, var(--gameplay-safe-left) + 8px);
   --hud-icon-button-size: 48px;
   --hud-icon-button-radius: 16px;
   --hud-icon-font-size: 22px;
   --hud-icon-settings-font-size: 20px;
-  --room-status-bottom: max(10px, env(safe-area-inset-bottom, 0px) + 8px);
-  --room-status-left: max(10px, env(safe-area-inset-left, 0px) + 8px);
+  --room-status-bottom: max(10px, var(--gameplay-safe-bottom) + 8px);
+  --room-status-left: max(10px, var(--gameplay-safe-left) + 8px);
 }
 
 body {
@@ -58,6 +60,10 @@ body {
 }
 
 #app-wrapper {
+  --gameplay-safe-top: env(safe-area-inset-top, 0px);
+  --gameplay-safe-right: env(safe-area-inset-right, 0px);
+  --gameplay-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --gameplay-safe-left: env(safe-area-inset-left, 0px);
   width: 100vw;
   height: 100vh;
   height: 100dvh;
@@ -70,6 +76,13 @@ body {
   background:
     linear-gradient(180deg, rgba(20, 15, 11, 0.48) 0%, rgba(12, 10, 8, 0.74) 100%),
     url('./assets/room-home.png') center center / cover no-repeat;
+}
+
+body.layout-landscape.pointer-coarse.viewport-landscape #app-wrapper {
+  --gameplay-safe-top: env(safe-area-inset-top, 0px);
+  --gameplay-safe-right: env(safe-area-inset-right, 0px);
+  --gameplay-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --gameplay-safe-left: env(safe-area-inset-left, 0px);
 }
 
 #app-wrapper::before {
@@ -105,9 +118,9 @@ body {
   justify-content: center;
   padding:
     var(--hud-top-pad-top)
-    var(--hud-top-pad-side)
+    var(--hud-top-pad-right)
     var(--hud-top-pad-bottom)
-    var(--hud-top-pad-side);
+    var(--hud-top-pad-left);
 }
 
 .top-hud-main {
@@ -134,11 +147,11 @@ body {
 }
 
 .hud-floating-actions-left {
-  left: var(--hud-floating-side);
+  left: var(--hud-floating-left);
 }
 
 .hud-floating-actions-right {
-  right: var(--hud-floating-side);
+  right: var(--hud-floating-right);
 }
 
 .room-status-corner {
@@ -672,9 +685,9 @@ body {
   gap: clamp(6px, 1vw, 12px);
   padding:
     0
-    max(10px, env(safe-area-inset-right, 0px) + 8px)
-    max(10px, env(safe-area-inset-bottom, 0px) + 8px)
-    max(10px, env(safe-area-inset-left, 0px) + 8px);
+    max(10px, var(--gameplay-safe-right) + 8px)
+    max(10px, var(--gameplay-safe-bottom) + 8px)
+    max(10px, var(--gameplay-safe-left) + 8px);
 }
 
 .control-column {
@@ -2199,11 +2212,11 @@ body {
   }
 
   .room-tools-left {
-    left: calc(env(safe-area-inset-left, 0px) + clamp(4px, calc(var(--gameplay-semantic-long) * 0.01), 10px));
+    left: calc(var(--gameplay-safe-left) + clamp(4px, calc(var(--gameplay-semantic-long) * 0.01), 10px));
   }
 
   .room-tools-right {
-    right: calc(env(safe-area-inset-right, 0px) + clamp(4px, calc(var(--gameplay-semantic-long) * 0.01), 10px));
+    right: calc(var(--gameplay-safe-right) + clamp(4px, calc(var(--gameplay-semantic-long) * 0.01), 10px));
   }
 
   #game-container {
@@ -2735,14 +2748,15 @@ body {
 
 @media (pointer: coarse) {
   :root {
-    --hud-floating-top: max(8px, env(safe-area-inset-top, 0px) + 6px);
-    --hud-floating-side: max(8px, env(safe-area-inset-right, 0px) + 6px);
+    --hud-floating-top: max(8px, var(--gameplay-safe-top) + 6px);
+    --hud-floating-right: max(8px, var(--gameplay-safe-right) + 6px);
+    --hud-floating-left: max(8px, var(--gameplay-safe-left) + 6px);
     --hud-icon-button-size: clamp(42px, calc(var(--gameplay-semantic-short) * 0.11), 48px);
     --hud-icon-button-radius: 14px;
     --hud-icon-font-size: clamp(18px, calc(var(--gameplay-semantic-short) * 0.045), 20px);
     --hud-icon-settings-font-size: clamp(18px, calc(var(--gameplay-semantic-short) * 0.045), 20px);
-    --room-status-bottom: max(8px, env(safe-area-inset-bottom, 0px) + 6px);
-    --room-status-left: max(8px, env(safe-area-inset-left, 0px) + 6px);
+    --room-status-bottom: max(8px, var(--gameplay-safe-bottom) + 6px);
+    --room-status-left: max(8px, var(--gameplay-safe-left) + 6px);
   }
 
   .play-area {
@@ -2753,9 +2767,9 @@ body {
     gap: clamp(4px, calc(var(--gameplay-semantic-short) * 0.01), 8px);
     padding:
       0
-      max(8px, env(safe-area-inset-right, 0px) + 6px)
-      max(8px, env(safe-area-inset-bottom, 0px) + 6px)
-      max(8px, env(safe-area-inset-left, 0px) + 6px);
+      max(8px, var(--gameplay-safe-right) + 6px)
+      max(8px, var(--gameplay-safe-bottom) + 6px)
+      max(8px, var(--gameplay-safe-left) + 6px);
   }
 
   #game-container {
@@ -2764,12 +2778,12 @@ body {
 
   .power-strip {
     width: clamp(24px, calc(var(--gameplay-semantic-long) * 0.035), 30px);
-    height: min(68vh, 420px);
+    height: min(calc(var(--gameplay-semantic-short) * 0.68), 420px);
   }
 
   .aim-arc {
     width: clamp(58px, calc(var(--gameplay-semantic-long) * 0.074), 72px);
-    height: min(68vh, 420px);
+    height: min(calc(var(--gameplay-semantic-short) * 0.68), 420px);
     margin-right: 0;
   }
 
@@ -2895,6 +2909,10 @@ body.layout-landscape.pointer-coarse.viewport-portrait #matchmaking-panel {
 body.layout-landscape.pointer-coarse.viewport-portrait #app-wrapper {
   --gameplay-semantic-long: 100vh;
   --gameplay-semantic-short: 100vw;
+  --gameplay-safe-top: env(safe-area-inset-right, 0px);
+  --gameplay-safe-right: env(safe-area-inset-bottom, 0px);
+  --gameplay-safe-bottom: env(safe-area-inset-left, 0px);
+  --gameplay-safe-left: env(safe-area-inset-top, 0px);
   position: absolute;
   left: 50%;
   top: 50%;
