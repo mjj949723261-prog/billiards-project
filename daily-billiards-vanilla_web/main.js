@@ -757,31 +757,38 @@ if (devView === 'play') {
 window.addEventListener('online', updateGameplayRoomChrome);
 window.addEventListener('offline', updateGameplayRoomChrome);
 
-// 禁止手机侧滑返回手势
-const preventSwipeNavigation = (e) => {
-    // 阻止水平滑动导致的浏览器前进/后退
-    if (e.cancelable) {
-        e.preventDefault();
-    }
-};
-
-// 监听触摸事件以阻止侧滑返回
+// 禁止手机侧滑返回手势（但不影响游戏控制区域）
 let touchStartX = 0;
 let touchStartY = 0;
+let touchStartTarget = null;
 
 document.addEventListener('touchstart', (e) => {
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
+    touchStartTarget = e.target;
 }, { passive: false });
 
 document.addEventListener('touchmove', (e) => {
+    // 检查是否在游戏控制区域内（力度条、滚轮、画布）
+    const isInGameControl =
+        touchStartTarget?.closest('#power-strip') ||
+        touchStartTarget?.closest('#aim-wheel') ||
+        touchStartTarget?.closest('.control-column-left') ||
+        touchStartTarget?.closest('.control-column-right') ||
+        touchStartTarget?.closest('#game-canvas');
+
+    // 如果在游戏控制区域内，不阻止滑动
+    if (isInGameControl) {
+        return;
+    }
+
     const touchCurrentX = e.touches[0].clientX;
     const touchCurrentY = e.touches[0].clientY;
     const deltaX = touchCurrentX - touchStartX;
     const deltaY = touchCurrentY - touchStartY;
 
     // 如果是水平滑动（侧滑手势），阻止默认行为
-    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
         // 特别是从屏幕边缘开始的滑动（侧滑返回手势）
         if (touchStartX < 50 || touchStartX > window.innerWidth - 50) {
             if (e.cancelable) {

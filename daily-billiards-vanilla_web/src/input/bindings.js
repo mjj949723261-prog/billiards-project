@@ -46,11 +46,11 @@ export function bindGameInput(game) {
   let pendingAimDegrees = 0
   const AIM_STEP_RADIANS = Math.PI / 180
   const AIM_STEP_DEGREES = 1
-  // 右侧直立拨轮按竖向位移累加步进，保持细腻但仍有滚动反馈。
-  const AIM_PIXELS_PER_STEP = 4
-  const AIM_ACCEL_START_PIXELS = 14
-  const AIM_ACCEL_MAX_MULTIPLIER = 2.2
-  const AIM_WHEEL_SCROLL_STEP_DEGREES = 0.125
+  // 简化滚轮参数，提高跟手性
+  const AIM_PIXELS_PER_STEP = 2.5  // 降低阈值，更灵敏
+  const AIM_ACCEL_START_PIXELS = 20  // 提高加速起始点
+  const AIM_ACCEL_MAX_MULTIPLIER = 1.8  // 降低最大加速倍数
+  const AIM_WHEEL_SCROLL_STEP_DEGREES = 0.2  // 增加滚轮步进
   const AIM_WHEEL_TICK_PITCH = 52
   const AIM_WHEEL_PIXELS_PER_DEGREE = 88
   let aimWheelStepPulseTimer = null
@@ -171,8 +171,13 @@ export function bindGameInput(game) {
     const rect = powerStrip.getBoundingClientRect()
     const ratio = Math.max(0, Math.min(1, (rect.bottom - clientY) / Math.max(rect.height, 1)))
     const nextPullDistance = ratio * MAX_PULL_DISTANCE
-    if (Math.abs(nextPullDistance - game.pullDistance) > 0.5) {
-      game.pullDistance = nextPullDistance
+
+    // 始终更新本地状态，保持完全跟手
+    game.pullDistance = nextPullDistance
+
+    // 网络同步使用较小的阈值，避免过度发送但保持流畅
+    if (!debugAlwaysDrag && Math.abs(nextPullDistance - (game.lastSyncedPullDistance || 0)) > 1.5) {
+      game.lastSyncedPullDistance = nextPullDistance
       GameClient.sendAim({ aimAngle: game.aimAngle, pullDistance: game.pullDistance })
     }
   }
@@ -221,7 +226,7 @@ export function bindGameInput(game) {
     aimWheelStepPulseTimer = window.setTimeout(() => {
       aimWheel?.classList.remove('is-stepping')
       aimWheelStepPulseTimer = null
-    }, 70)
+    }, 50)  // 缩短反馈时间，更快速
   }
 
   const syncAimWheelVisual = () => {
@@ -238,24 +243,35 @@ export function bindGameInput(game) {
     game.showRemoteCue = false
     syncAimWheelVisual()
     pulseAimWheelFeedback()
-    GameClient.sendAim({ aimAngle: game.aimAngle, pullDistance: game.pullDistance })
+
+    // 使用节流减少网络同步频率
+    if (!game.lastAimSyncTime || Date.now() - game.lastAimSyncTime > 50) {
+      game.lastAimSyncTime = Date.now()
+      GameClient.sendAim({ aimAngle: game.aimAngle, pullDistance: game.pullDistance })
+    }
     return true
   }
 
   const stepAimWheelByDeltaY = (deltaY) => {
     if (Math.abs(deltaY) <= 0.001) return false
 
+    // 简化逻辑：使用更线性的响应，减少加速度影响
     const absTangentialDelta = Math.abs(deltaY)
     let accelMultiplier = 1
+
+    // 只在快速滑动时轻微加速
     if (absTangentialDelta > AIM_ACCEL_START_PIXELS) {
       const extraRatio = Math.min(
         1,
-        (absTangentialDelta - AIM_ACCEL_START_PIXELS) / 26
+        (absTangentialDelta - AIM_ACCEL_START_PIXELS) / 40
       )
       accelMultiplier = 1 + extraRatio * (AIM_ACCEL_MAX_MULTIPLIER - 1)
     }
 
-    pendingAimDegrees += (deltaY * accelMultiplier) / AIM_PIXELS_PER_STEP
+    // 直接转换为角度变化，更跟手
+    const degreesChange = (deltaY * accelMultiplier) / AIM_PIXELS_PER_STEP
+    pendingAimDegrees += degreesChange
+
     const stepCount = pendingAimDegrees > 0
       ? Math.floor(pendingAimDegrees / AIM_STEP_DEGREES)
       : Math.ceil(pendingAimDegrees / AIM_STEP_DEGREES)
@@ -305,7 +321,7 @@ export function bindGameInput(game) {
   const handleAimWheelScroll = (e) => {
     if (!aimWheel || !canControlShot()) return
     // wheel 事件本身只会在命中元素时触发，这里允许用户在可见拨轮区域内直接滚动，
-    // 不再额外要求命中极窄的弧带采样区，避免“看得见但滚不动”的挫败感。
+    // 不再额外要求命中极窄的弧带采样区，避免”看得见但滚不动”的挫败感。
     const rect = aimWheel.getBoundingClientRect()
     const insideVisibleWheelBounds =
       e.clientX >= rect.left &&
@@ -320,10 +336,11 @@ export function bindGameInput(game) {
     game.hasPointerInput = false
     aimWheel.classList.add('is-active')
 
-    const normalizedNotches = Math.max(1, Math.round(Math.abs(e.deltaY) / 100))
+    // 简化滚轮步进计算
     const direction = e.deltaY >= 0 ? 1 : -1
-    const stepCount = direction * normalizedNotches * AIM_WHEEL_SCROLL_STEP_DEGREES
+    const stepCount = direction * AIM_WHEEL_SCROLL_STEP_DEGREES
     const didStep = applyAimWheelStepCount(stepCount)
+
     if (didStep) {
       if (aimWheelActiveTimer) {
         window.clearTimeout(aimWheelActiveTimer)
@@ -333,7 +350,7 @@ export function bindGameInput(game) {
         aimWheel.classList.remove('is-stepping')
         game.adjustingAimWheel = false
         aimWheelActiveTimer = null
-      }, 90)
+      }, 60)  // 缩短激活状态持续时间
     } else {
       aimWheel.classList.remove('is-active')
       game.adjustingAimWheel = false
@@ -373,6 +390,11 @@ export function bindGameInput(game) {
 
   const beginPowerStripControl = (e) => {
     if (!powerStrip || game.ballInHand || !canControlShot()) return
+    // 确保点击在力度条内部
+    const rect = powerStrip.getBoundingClientRect()
+    if (e.clientX < rect.left || e.clientX > rect.right ||
+        e.clientY < rect.top || e.clientY > rect.bottom) return
+
     game.audio.unlock()
     activePowerPointerId = e.pointerId
     game.hasPointerInput = false
@@ -403,6 +425,18 @@ export function bindGameInput(game) {
     }
     clearDragInteraction(game)
     e.stopPropagation()
+  }
+
+  const cancelPowerStripControl = (e) => {
+    if (activePowerPointerId === null || e.pointerId !== activePowerPointerId) return
+    releasePointerCaptureSafely(powerStrip, e.pointerId)
+    activePowerPointerId = null
+    powerStrip.classList.remove('is-active')
+    // 取消时不发射球，直接清理状态
+    clearDragInteraction(game)
+    if (!game.ballInHand && !debugAlwaysDrag) {
+      GameClient.sendAim({ aimAngle: game.aimAngle, pullDistance: 0 })
+    }
   }
 
   /**
@@ -553,6 +587,8 @@ export function bindGameInput(game) {
   registerNativeGestureSuppressors(rightControlColumn, { blockTouch: true })
   registerNativeGestureSuppressors(aimWheel, { blockPointer: true, blockTouch: true })
   registerNativeGestureSuppressors(powerStrip, { blockPointer: true, blockTouch: true })
+
+  // 画布的鼠标和触摸事件
   gameInputTarget.addEventListener('mousedown', start)
   window.addEventListener('mousemove', move)
   window.addEventListener('mouseup', end)
@@ -560,13 +596,30 @@ export function bindGameInput(game) {
   window.addEventListener('touchmove', move, { passive: false })
   window.addEventListener('touchend', end)
 
+  // 方向滚轮的 pointer 事件
   aimWheel?.addEventListener('pointerdown', beginAimWheelControl)
   aimWheel?.addEventListener('wheel', handleAimWheelScroll, { passive: false })
+
+  // 力度条的 pointer 事件
   powerStrip?.addEventListener('pointerdown', beginPowerStripControl)
-  window.addEventListener('pointermove', moveAimWheelControl, { passive: false })
-  window.addEventListener('pointermove', movePowerStripControl, { passive: false })
-  window.addEventListener('pointerup', endAimWheelControl)
-  window.addEventListener('pointercancel', cancelAimWheelControl)
-  window.addEventListener('pointerup', endPowerStripControl)
-  window.addEventListener('pointercancel', endPowerStripControl)
+
+  // 全局 pointer 移动和结束事件（统一处理两个控制器）
+  const handlePointerMove = (e) => {
+    moveAimWheelControl(e)
+    movePowerStripControl(e)
+  }
+
+  const handlePointerUp = (e) => {
+    endAimWheelControl(e)
+    endPowerStripControl(e)
+  }
+
+  const handlePointerCancel = (e) => {
+    cancelAimWheelControl(e)
+    cancelPowerStripControl(e)
+  }
+
+  window.addEventListener('pointermove', handlePointerMove, { passive: false })
+  window.addEventListener('pointerup', handlePointerUp)
+  window.addEventListener('pointercancel', handlePointerCancel)
 }

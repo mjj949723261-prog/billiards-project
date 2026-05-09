@@ -761,7 +761,6 @@ body.layout-landscape.pointer-coarse.viewport-landscape #app-wrapper {
 }
 
 .power-strip.is-active {
-  transform: scale(1.03);
   border-color: rgba(251, 191, 36, 0.55);
   box-shadow:
     inset 0 0 0 1px rgba(255,255,255,0.08),
@@ -883,7 +882,7 @@ body.layout-landscape.pointer-coarse.viewport-landscape #app-wrapper {
 }
 
 .aim-arc.is-active {
-  transform: scale(1.03);
+  /* 移除放大效果，保持原始大小 */
 }
 
 .aim-arc.is-stepping::before {
