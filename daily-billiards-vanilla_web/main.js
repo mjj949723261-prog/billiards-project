@@ -757,6 +757,28 @@ if (devView === 'play') {
 window.addEventListener('online', updateGameplayRoomChrome);
 window.addEventListener('offline', updateGameplayRoomChrome);
 
+// 全局防止文本选中（针对 iOS WKWebView 的额外保护）
+const preventTextSelection = (e) => {
+    try {
+        const selection = window.getSelection?.();
+        if (selection && selection.rangeCount > 0) {
+            selection.removeAllRanges();
+            if (selection.empty) selection.empty();
+        }
+        if (document.selection) {
+            document.selection.empty();
+        }
+    } catch (err) {
+        // 忽略选择清理错误
+    }
+};
+
+// 监听选择变化事件
+document.addEventListener('selectionchange', preventTextSelection, { passive: true });
+
+// 定期清理选择（针对某些 iOS 版本的额外保护）
+setInterval(preventTextSelection, 300);
+
 if (!roomFromUrl && roomEntry.suggestedRoomId) {
     document.getElementById('room-id-input').value = roomEntry.suggestedRoomId;
 }

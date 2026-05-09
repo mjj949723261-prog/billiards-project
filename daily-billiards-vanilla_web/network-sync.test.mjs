@@ -1355,6 +1355,14 @@ test('mobile gameplay safe-area insets follow landscape semantics in portrait-he
   assert.match(css, /@media \(pointer: coarse\)\s*\{[\s\S]*\.play-area\s*\{[\s\S]*max\(8px,\s*var\(--gameplay-safe-right\)\s*\+\s*6px\)[\s\S]*max\(8px,\s*var\(--gameplay-safe-bottom\)\s*\+\s*6px\)[\s\S]*max\(8px,\s*var\(--gameplay-safe-left\)\s*\+\s*6px\);/)
 })
 
+test('landscape-held mobile gameplay keeps side controls away from physical browser back-swipe edges', () => {
+  const css = fs.readFileSync(new URL('./style.css', import.meta.url), 'utf8')
+
+  assert.match(css, /body\.layout-landscape\.pointer-coarse\.viewport-landscape \.play-area\s*\{[\s\S]*padding:\s*0\s*max\(18px,\s*var\(--gameplay-safe-right\)\s*\+\s*14px\)\s*max\(8px,\s*var\(--gameplay-safe-bottom\)\s*\+\s*6px\)\s*max\(18px,\s*var\(--gameplay-safe-left\)\s*\+\s*14px\);/)
+  assert.match(css, /body\.layout-landscape\.pointer-coarse\.viewport-landscape \.power-strip\s*\{[\s\S]*margin-left:\s*2px;/)
+  assert.match(css, /body\.layout-landscape\.pointer-coarse\.viewport-landscape \.aim-arc\s*\{[\s\S]*margin-right:\s*2px;/)
+})
+
 test('gameplay fits table cloth first and treats rail thickness as a separate visual layer', () => {
   const gameSource = fs.readFileSync(new URL('./src/game.js', import.meta.url), 'utf8')
   const rendererSource = fs.readFileSync(new URL('./src/render/pixi-renderer.js', import.meta.url), 'utf8')

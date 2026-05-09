@@ -35,6 +35,7 @@ function clearDragInteraction(game) {
  */
 export function bindGameInput(game) {
   const debugAlwaysDrag = hasDebugAlwaysDrag(window)
+  const gameInputTarget = game.canvas
   const powerStrip = document.getElementById('power-strip')
   const aimWheel = document.getElementById('aim-wheel')
   const leftControlColumn = document.querySelector('.control-column-left')
@@ -56,6 +57,73 @@ export function bindGameInput(game) {
   let aimWheelActiveTimer = null
 
   const isSideControlGestureActive = () => activePowerPointerId !== null || activeAimPointerId !== null
+
+  const suppressNativeLongPressBehavior = (e) => {
+    if (e.pointerType === 'mouse') return
+    if (e.cancelable) e.preventDefault()
+  }
+
+  let nativeLongPressBlockTimer = null
+
+  const keepSuppressingDuringLongPressWindow = () => {
+    if (nativeLongPressBlockTimer) window.clearTimeout(nativeLongPressBlockTimer)
+    const startedAt = Date.now()
+    const suppressSelectionFrame = () => {
+      try {
+        const selection = window.getSelection?.()
+        if (selection) {
+          selection.removeAllRanges()
+          // 额外清理 iOS WebView 的选择状态
+          if (selection.empty) selection.empty()
+        }
+        // 清理 document 级别的选择
+        if (document.selection) {
+          document.selection.empty()
+        }
+      } catch (e) {
+        // 忽略选择清理错误
+      }
+      if (Date.now() - startedAt < 1200) {
+        nativeLongPressBlockTimer = window.setTimeout(suppressSelectionFrame, 40)
+      } else {
+        nativeLongPressBlockTimer = null
+      }
+    }
+    suppressSelectionFrame()
+  }
+
+  const stopLongPressSelectionBlock = () => {
+    if (!nativeLongPressBlockTimer) return
+    window.clearTimeout(nativeLongPressBlockTimer)
+    nativeLongPressBlockTimer = null
+  }
+
+  const registerNativeGestureSuppressors = (el, { blockPointer = false, blockTouch = false } = {}) => {
+    if (!el) return
+    const eventOptions = { capture: true, passive: false }
+    if (blockPointer) {
+      el.addEventListener('pointerdown', suppressNativeLongPressBehavior, eventOptions)
+      el.addEventListener('pointermove', suppressNativeLongPressBehavior, eventOptions)
+    }
+    if (blockTouch) {
+      el.addEventListener('touchstart', suppressNativeLongPressBehavior, eventOptions)
+      el.addEventListener('touchmove', suppressNativeLongPressBehavior, eventOptions)
+      el.addEventListener('touchstart', keepSuppressingDuringLongPressWindow, eventOptions)
+      el.addEventListener('touchend', stopLongPressSelectionBlock, eventOptions)
+      el.addEventListener('touchcancel', stopLongPressSelectionBlock, eventOptions)
+    }
+    el.addEventListener('contextmenu', suppressNativeLongPressBehavior, eventOptions)
+    el.addEventListener('dragstart', suppressNativeLongPressBehavior, eventOptions)
+    el.addEventListener('selectstart', suppressNativeLongPressBehavior, eventOptions)
+    el.addEventListener('gesturestart', suppressNativeLongPressBehavior, eventOptions)
+  }
+
+  game.canvas.draggable = false
+  game.canvas.setAttribute('draggable', 'false')
+  game.canvas.style.webkitUserDrag = 'none'
+  game.canvas.style.webkitTouchCallout = 'none'
+  game.canvas.style.webkitUserSelect = 'none'
+  game.canvas.style.userSelect = 'none'
 
   const getPrimaryClientPoint = (e) => {
     const touch = e.touches?.[0] || e.changedTouches?.[0]
@@ -342,6 +410,7 @@ export function bindGameInput(game) {
    * @param {MouseEvent|TouchEvent} e - 输入事件。
    */
   const start = (e) => {
+    e.preventDefault()
     if (isSideControlGestureActive()) return
     if (isInsideSideControlColumn(e)) {
       game.hasPointerInput = false
@@ -386,6 +455,7 @@ export function bindGameInput(game) {
    * @param {MouseEvent|TouchEvent} e - 输入事件。
    */
   const move = (e) => {
+    e.preventDefault()
     if (isSideControlGestureActive()) return
     if (isInsideSideControlColumn(e)) {
       game.hasPointerInput = false
@@ -478,10 +548,15 @@ export function bindGameInput(game) {
   }
 
   // 注册事件监听器
-  game.canvas.addEventListener('mousedown', start)
+  registerNativeGestureSuppressors(gameInputTarget, { blockPointer: true, blockTouch: true })
+  registerNativeGestureSuppressors(leftControlColumn, { blockTouch: true })
+  registerNativeGestureSuppressors(rightControlColumn, { blockTouch: true })
+  registerNativeGestureSuppressors(aimWheel, { blockPointer: true, blockTouch: true })
+  registerNativeGestureSuppressors(powerStrip, { blockPointer: true, blockTouch: true })
+  gameInputTarget.addEventListener('mousedown', start)
   window.addEventListener('mousemove', move)
   window.addEventListener('mouseup', end)
-  game.canvas.addEventListener('touchstart', start, { passive: false })
+  gameInputTarget.addEventListener('touchstart', start, { passive: false })
   window.addEventListener('touchmove', move, { passive: false })
   window.addEventListener('touchend', end)
 
