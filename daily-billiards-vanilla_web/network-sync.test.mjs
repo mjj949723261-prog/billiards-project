@@ -7,6 +7,47 @@ import { applyStatusSync, createStatusSyncSnapshot } from './src/network/state-s
 import { Vec2 } from './src/math.js'
 import { Ball } from './src/entities/ball.js'
 import { applyLayoutMode, hasDebugAlwaysDrag, isPortraitLayout, resolveRequestedLayoutMode } from './src/layout/mode.js'
+import { computeAimWheelDelta, computePowerStripRatio } from './src/input/bindings.js'
+
+test('power strip reads along the visible axis on rotated mobile shells', () => {
+  const verticalRect = { left: 20, right: 50, top: 100, bottom: 500, width: 30, height: 400 }
+  assert.equal(computePowerStripRatio({ clientX: 35, clientY: 500 }, verticalRect), 0)
+  assert.equal(computePowerStripRatio({ clientX: 35, clientY: 100 }, verticalRect), 1)
+
+  const rotatedRect = { left: 40, right: 440, top: 20, bottom: 50, width: 400, height: 30 }
+  assert.equal(computePowerStripRatio({ clientX: 40, clientY: 35 }, rotatedRect, {
+    portraitHeldLandscapeSemanticMobile: true,
+  }), 0)
+  assert.equal(computePowerStripRatio({ clientX: 440, clientY: 35 }, rotatedRect, {
+    portraitHeldLandscapeSemanticMobile: true,
+  }), 1)
+  assert.equal(computePowerStripRatio({ clientX: 240, clientY: -200 }, rotatedRect, {
+    portraitHeldLandscapeSemanticMobile: true,
+  }), 0.5)
+})
+
+test('aim wheel drag reads along the visible axis on rotated mobile shells', () => {
+  assert.equal(
+    computeAimWheelDelta({ clientX: 100, clientY: 200 }, { clientX: 100, clientY: 230 }),
+    30,
+  )
+  assert.equal(
+    computeAimWheelDelta(
+      { clientX: 300, clientY: 100 },
+      { clientX: 260, clientY: 100 },
+      { portraitHeldLandscapeSemanticMobile: true },
+    ),
+    40,
+  )
+  assert.equal(
+    computeAimWheelDelta(
+      { clientX: 300, clientY: 100 },
+      { clientX: 340, clientY: 20 },
+      { portraitHeldLandscapeSemanticMobile: true },
+    ),
+    -40,
+  )
+})
 
 test('GameClient can be imported without browser storage globals', async () => {
   const originalWindow = globalThis.window

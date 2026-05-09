@@ -11,8 +11,34 @@ import {
 } from '../constants.js?v=20260429-room-entry-fix'
 import { Vec2 } from '../math.js'
 import { GameClient } from '../network/game-client.js?v=20260509_room_join_snapshot_fix'
-import { hasDebugAlwaysDrag } from '../layout/mode.js'
+import { hasDebugAlwaysDrag, isPortraitHeldLandscapeSemanticMobile } from '../layout/mode.js'
 import { buildSettledSnapshotPayload } from '../network/shot-state.js'
+
+export function computePowerStripRatio(point, rect, { portraitHeldLandscapeSemanticMobile = false } = {}) {
+  const width = Math.max(rect?.width ?? 0, 1)
+  const height = Math.max(rect?.height ?? 0, 1)
+  const clientX = point?.clientX ?? 0
+  const clientY = point?.clientY ?? 0
+
+  // In portrait-held landscape mode the whole app shell is rotated 90deg.
+  // The visual strip axis is horizontal, so physical clientY is the wrong axis.
+  if (portraitHeldLandscapeSemanticMobile || width > height) {
+    return Math.max(0, Math.min(1, (clientX - rect.left) / width))
+  }
+
+  return Math.max(0, Math.min(1, (rect.bottom - clientY) / height))
+}
+
+export function computeAimWheelDelta(previousPoint, currentPoint, { portraitHeldLandscapeSemanticMobile = false } = {}) {
+  if (!previousPoint || !currentPoint) return 0
+
+  // Match the semantic vertical wheel axis after the landscape shell is rotated.
+  if (portraitHeldLandscapeSemanticMobile) {
+    return (previousPoint.clientX ?? 0) - (currentPoint.clientX ?? 0)
+  }
+
+  return (currentPoint.clientY ?? 0) - (previousPoint.clientY ?? 0)
+}
 
 /**
  * 将当前的母球摆放位置同步给远程对手。
@@ -42,7 +68,7 @@ export function bindGameInput(game) {
   const rightControlColumn = document.querySelector('.control-column-right')
   let activeAimPointerId = null
   let activePowerPointerId = null
-  let lastAimPointerY = 0
+  let lastAimPointerPoint = null
   let pendingAimDegrees = 0
   const AIM_STEP_RADIANS = Math.PI / 180
   const AIM_STEP_DEGREES = 1
@@ -166,10 +192,12 @@ export function bindGameInput(game) {
     return true
   }
 
-  const updatePowerFromClientY = (clientY) => {
+  const updatePowerFromPoint = (point) => {
     if (!powerStrip) return
     const rect = powerStrip.getBoundingClientRect()
-    const ratio = Math.max(0, Math.min(1, (rect.bottom - clientY) / Math.max(rect.height, 1)))
+    const ratio = computePowerStripRatio(point, rect, {
+      portraitHeldLandscapeSemanticMobile: isPortraitHeldLandscapeSemanticMobile(document),
+    })
     const nextPullDistance = ratio * MAX_PULL_DISTANCE
 
     // 始终更新本地状态，保持完全跟手
@@ -299,7 +327,7 @@ export function bindGameInput(game) {
     // 暂停“鼠标悬停即瞄准”，避免右侧拨轮刚改完角度就被旧鼠标位置抢回去。
     game.hasPointerInput = false
     activeAimPointerId = e.pointerId
-    lastAimPointerY = e.clientY
+    lastAimPointerPoint = { clientX: e.clientX, clientY: e.clientY }
     pendingAimDegrees = 0
     game.adjustingAimWheel = true
     game.showRemoteCue = false
@@ -311,8 +339,11 @@ export function bindGameInput(game) {
 
   const moveAimWheelControl = (e) => {
     if (activeAimPointerId === null || e.pointerId !== activeAimPointerId || game.ballInHand) return
-    const deltaY = e.clientY - lastAimPointerY
-    lastAimPointerY = e.clientY
+    const currentPoint = { clientX: e.clientX, clientY: e.clientY }
+    const deltaY = computeAimWheelDelta(lastAimPointerPoint, currentPoint, {
+      portraitHeldLandscapeSemanticMobile: isPortraitHeldLandscapeSemanticMobile(document),
+    })
+    lastAimPointerPoint = currentPoint
     stepAimWheelByDeltaY(deltaY)
     e.stopPropagation()
     e.preventDefault()
@@ -364,6 +395,7 @@ export function bindGameInput(game) {
     if (activeAimPointerId === null || e.pointerId !== activeAimPointerId) return
     releasePointerCaptureSafely(aimWheel, e.pointerId)
     activeAimPointerId = null
+    lastAimPointerPoint = null
     pendingAimDegrees = 0
     game.adjustingAimWheel = false
     aimWheel.classList.remove('is-active')
@@ -402,14 +434,14 @@ export function bindGameInput(game) {
     game.showRemoteCue = false
     powerStrip.classList.add('is-active')
     powerStrip.setPointerCapture?.(e.pointerId)
-    updatePowerFromClientY(e.clientY)
+    updatePowerFromPoint(e)
     e.stopPropagation()
     e.preventDefault()
   }
 
   const movePowerStripControl = (e) => {
     if (activePowerPointerId === null || e.pointerId !== activePowerPointerId) return
-    updatePowerFromClientY(e.clientY)
+    updatePowerFromPoint(e)
     e.stopPropagation()
     e.preventDefault()
   }
