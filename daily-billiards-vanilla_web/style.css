@@ -27,6 +27,8 @@ html,
 body {
   touch-action: none !important;
   overscroll-behavior: none;
+  overscroll-behavior-x: none !important;
+  overscroll-behavior-y: none !important;
 }
 
 canvas,
