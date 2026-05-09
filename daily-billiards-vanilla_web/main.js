@@ -4,9 +4,9 @@
  * 网络事件编排以及全局状态初始化。
  */
 
-import { bootstrapGame } from './src/game.js?v=20260429-room-entry-fix2'
+import { bootstrapGame } from './src/game.js?v=20260509_room_join_snapshot_fix'
 import { applyLayoutMode } from './src/layout/mode.js'
-import { GameClient } from './src/network/game-client.js'
+import { GameClient } from './src/network/game-client.js?v=20260509_room_join_snapshot_fix'
 import { resolveRoomEntry } from './src/network/session-entry.js'
 import { AuthService } from './src/network/auth-service.js'
 import {
@@ -59,17 +59,24 @@ function updateGameplayRoomChrome() {
         const online = typeof navigator.onLine === 'boolean' ? navigator.onLine : true;
         let state = 'online';
         let label = '网络正常';
-        if (!online || GameClient.connectionState === 'idle') {
+
+        if (!online) {
             state = 'offline';
-            label = '网络异常';
+            label = '网络断开';
+        } else if (GameClient.connectionState === 'idle' && GameClient.reconnectAttempts > 0) {
+            state = 'unstable';
+            label = `重连中 (${GameClient.reconnectAttempts}/${GameClient.maxReconnectAttempts})`;
         } else if (GameClient.connectionState === 'connecting') {
             state = 'unstable';
-            label = '重连中';
+            label = '连接中';
+        } else if (GameClient.connectionState === 'idle') {
+            state = 'offline';
+            label = '未连接';
         }
+
         networkIndicator.dataset.state = state;
         networkIndicator.textContent = label;
     }
-
 }
 
 function leaveRoomToLobby() {
@@ -149,6 +156,8 @@ window.handleGameStart = (room) => {
         status,
         msgType,
         roomId,
+        playerIds: roomData.playerIds || [],
+        playerCount: Array.isArray(roomData.playerIds) ? roomData.playerIds.length : 0,
         currentTurnPlayerId: roomData.currentTurnPlayerId,
         ballInHand: roomData.ballInHand,
         ballInHandZone: roomData.ballInHandZone,
@@ -754,8 +763,21 @@ if (devView === 'play') {
     updateGameplayRoomChrome();
 }
 
-window.addEventListener('online', updateGameplayRoomChrome);
-window.addEventListener('offline', updateGameplayRoomChrome);
+window.addEventListener('online', () => {
+    updateGameplayRoomChrome();
+    // 网络恢复时，如果有保存的连接参数且当前未连接，尝试重连
+    if (GameClient.lastConnectionParams && GameClient.connectionState === 'idle') {
+        console.log('[Network] Network restored, attempting reconnect...');
+        const { nickname, onConnected, requestedRoomId } = GameClient.lastConnectionParams;
+        GameClient.reconnectAttempts = 0;  // 重置重连计数
+        GameClient.connect(nickname, onConnected, requestedRoomId);
+    }
+});
+
+window.addEventListener('offline', () => {
+    updateGameplayRoomChrome();
+    console.log('[Network] Network lost');
+});
 
 // 禁止手机侧滑返回手势（但不影响游戏控制区域）
 let touchStartX = 0;

@@ -3,7 +3,7 @@
  * @description 处理用户注册、登录、登出以及身份令牌的管理。
  */
 
-import { resolveServerOrigin } from './game-client.js';
+import { resolveServerOrigin } from './game-client.js?v=20260509_room_join_snapshot_fix';
 
 const TOKEN_KEY = 'billiards_jwt_token';
 const USER_KEY = 'billiards_user_info';

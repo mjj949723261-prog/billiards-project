@@ -111,8 +111,14 @@ export const GameClient = {
     stompClient: null,
     /** @type {Object|null} 当前房间消息的订阅对象。 */
     roomSubscription: null,
+    subscribedRoomId: null,
     /** @type {string} 当前连接状态 ('idle', 'connecting', 'connected')。 */
     connectionState: 'idle',
+    reconnectAttempts: 0,
+    maxReconnectAttempts: 5,
+    reconnectDelay: 2000,
+    reconnectTimer: null,
+    lastConnectionParams: null,  // 保存最后的连接参数用于重连
     /** @type {string} 当前玩家的唯一持久化 ID。 */
     get playerId() {
         // 如果已登录，优先使用用户 ID；否则使用随机 ID（仅用于游客或未登录状态）
@@ -180,12 +186,18 @@ export const GameClient = {
             throw new Error(reason);
         }
 
+        // 保存连接参数用于重连
+        this.lastConnectionParams = { nickname, onConnected, requestedRoomId };
         this.nickname = nickname;
         this.connectionState = 'connecting';
 
         const socket = new SockJS(`${resolveServerOrigin()}/game-socket`);
         this.stompClient = Stomp.over(socket);
         this.stompClient.debug = (msg) => debugLog('stomp', '[STOMP]', msg);
+
+        // 配置心跳：客户端每 10 秒发送，期望服务端每 10 秒发送
+        this.stompClient.heartbeat.outgoing = 10000;
+        this.stompClient.heartbeat.incoming = 10000;
 
         // 构建 STOMP 连接头部，包含 JWT (如果已登录)
         const headers = {};
@@ -197,8 +209,9 @@ export const GameClient = {
         this.stompClient.connect(headers, () => {
             debugLog('roomFlow', '[Realtime] Connected', { playerId: this.playerId, requestedRoomId });
             this.connectionState = 'connected';
+            this.reconnectAttempts = 0;  // 重置重连计数
 
-            // 显式房间号入房时，先订阅房间 topic，避免个人队列回包偶发缺失时卡在“入房中”。
+            // 显式房间号入房时，先订阅房间 topic，避免个人队列回包偶发缺失时卡在”入房中”。
             if (requestedRoomId) {
                 this.roomId = requestedRoomId;
                 storage.setItem('billiards_room_id', this.roomId);
@@ -221,7 +234,7 @@ export const GameClient = {
                 }
 
                 // 个人队列里的 JOIN / ERROR / ROOM_SNAPSHOT 都需要进入统一分发，
-                // 否则显式入房失败时会一直停在“正在加入房间”。
+                // 否则显式入房失败时会一直停在”正在加入房间”。
                 this.onMessageReceived(msg);
             });
 
@@ -235,23 +248,92 @@ export const GameClient = {
 
             if (onConnected) onConnected();
         }, (error) => {
+            debugLog('roomFlow', '[Realtime] Connection error', { error, attempts: this.reconnectAttempts });
             this.connectionState = 'idle';
+            this.cleanupConnection();
+
+            // 尝试自动重连
+            if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                this.attemptReconnect();
+            } else {
+                // 超过最大重连次数，通知用户
+                this.roomId = null;
+                this.isMyTurn = false;
+                this.lastConnectionParams = null;
+                if (window.handleConnectionError) {
+                    const message = error?.message || error?.toString?.() || '连接游戏服务器失败';
+                    window.handleConnectionError(message + `（已重试 ${this.reconnectAttempts} 次）`);
+                    return;
+                }
+                alert('连接游戏服务器失败，请确保后端服务已启动');
+            }
+        });
+
+        // 监听 WebSocket 断开事件
+        socket.onclose = () => {
+            debugLog('roomFlow', '[Realtime] WebSocket closed');
+            if (this.connectionState === 'connected') {
+                this.connectionState = 'idle';
+                this.handleUnexpectedDisconnect();
+            }
+        };
+    },
+
+    /**
+     * 尝试重新连接
+     */
+    attemptReconnect() {
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+        }
+
+        this.reconnectAttempts++;
+        const delay = this.reconnectDelay * Math.min(this.reconnectAttempts, 3);  // 指数退避，最多 6 秒
+
+        debugLog('roomFlow', `[Realtime] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+
+        // 更新 UI 显示重连状态
+        if (window.updateGameplayRoomChrome) {
+            window.updateGameplayRoomChrome();
+        }
+
+        this.reconnectTimer = setTimeout(() => {
+            if (this.lastConnectionParams) {
+                const { nickname, onConnected, requestedRoomId } = this.lastConnectionParams;
+                this.connect(nickname, onConnected, requestedRoomId);
+            }
+        }, delay);
+    },
+
+    /**
+     * 处理意外断线
+     */
+    handleUnexpectedDisconnect() {
+        debugLog('roomFlow', '[Realtime] Unexpected disconnect detected');
+
+        // 如果在游戏中，尝试重连
+        if (this.roomId && this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.attemptReconnect();
+        } else {
+            // 否则清理状态
             this.roomId = null;
             this.isMyTurn = false;
-            this.cleanupConnection();
             if (window.handleConnectionError) {
-                const message = error?.message || error?.toString?.() || '连接游戏服务器失败';
-                window.handleConnectionError(message);
-                return;
+                window.handleConnectionError('连接已断开');
             }
-            alert('连接游戏服务器失败，请确保后端服务已启动');
-        });
+        }
     },
 
     /**
      * 断开与服务器的连接并清理订阅。
      */
     cleanupConnection() {
+        // 清理重连定时器
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+
         if (this.roomSubscription) {
             this.roomSubscription.unsubscribe();
             this.roomSubscription = null;
@@ -276,6 +358,8 @@ export const GameClient = {
         this.connectionState = 'idle';
         this.isMyTurn = false;
         this.roomId = null;
+        this.reconnectAttempts = 0;
+        this.lastConnectionParams = null;
         storage.removeItem('billiards_room_id');
         this.cleanupConnection();
     },
@@ -285,9 +369,13 @@ export const GameClient = {
      * @param {string} roomId - 房间 ID。
      */
     subscribeToRoom(roomId) {
+        if (this.roomSubscription && this.subscribedRoomId === roomId) {
+            return;
+        }
         if (this.roomSubscription) {
             this.roomSubscription.unsubscribe();
         }
+        this.subscribedRoomId = roomId;
         this.roomSubscription = this.stompClient.subscribe('/topic/room/' + roomId, (sdkEvent) => {
             this.onMessageReceived(JSON.parse(sdkEvent.body));
         });

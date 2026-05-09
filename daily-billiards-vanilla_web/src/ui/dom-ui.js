@@ -4,7 +4,7 @@
  * 包含计分板更新、倒计时显示、球组状态展示以及击球力度条的实时渲染。
  */
 
-import { GameClient } from '../network/game-client.js'
+import { GameClient } from '../network/game-client.js?v=20260509_room_join_snapshot_fix'
 import { MAX_PULL_DISTANCE } from '../constants.js?v=20260429-room-entry-fix'
 
 /**

@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -57,6 +56,9 @@ public class RoomService {
     @Autowired
     private UserStatsMapper userStatsMapper;
 
+    // 追踪房间进入 PAUSED 状态的时间戳 (roomId -> timestamp)
+    private final Map<String, Long> roomPausedAt = new java.util.concurrent.ConcurrentHashMap<>();
+
     public synchronized void processJoin(String playerId, String requestedRoomId, String nickname) {
         Optional<BilliardsRoom> currentRoom = roomRepository.findAll().stream()
                 .filter(r -> r.getPlayerIds().contains(playerId))
@@ -97,8 +99,13 @@ public class RoomService {
         }
 
         BilliardsRoom.GameStatus oldStatus = room.getStatus();
+        boolean reconnectingPausedRoom = oldStatus == BilliardsRoom.GameStatus.PAUSED
+                && room.getPlayerIds().contains(playerId);
 
         if (room.addPlayer(playerId)) {
+            if (reconnectingPausedRoom) {
+                log.info("玩家 {} 重新连接到房间 {}", playerId, room.getRoomId());
+            }
             room.getPlayerNames().put(playerId, resolveDisplayName(playerId, nickname));
             roomRepository.save(room);
 
@@ -359,6 +366,8 @@ public class RoomService {
                 room.getRematchReadyPlayers().add(playerId);
             }
             if (room.getRematchReadyPlayers().size() == 2) {
+                turnTimerService.cancelTimer(roomId);
+                turnTimerService.cancelTimer(roomId + SHOT_FINALIZE_TIMER_SUFFIX);
                 room.resetGame();
                 roomRepository.save(room);
                 startTurnTimer(room);
@@ -842,6 +851,7 @@ public class RoomService {
         room.setPendingShotInput(null);
         room.getPendingShotReports().clear();
         room.setStatus(BilliardsRoom.GameStatus.PAUSED);
+        roomPausedAt.put(room.getRoomId(), System.currentTimeMillis());
         if (room.getLastSettledBallState() != null) {
             room.setBallState(room.getLastSettledBallState());
         }
@@ -956,6 +966,7 @@ public class RoomService {
         turnTimerService.cancelTimer(room.getRoomId() + SHOT_FINALIZE_TIMER_SUFFIX);
         room.setStatus(BilliardsRoom.GameStatus.PAUSED);
         room.setExpireAt(0);
+        roomPausedAt.put(room.getRoomId(), System.currentTimeMillis());
         room.setPendingShotInput(null);
         room.getPendingShotReports().clear();
         if (room.getLastSettledBallState() != null) {
@@ -975,6 +986,7 @@ public class RoomService {
     }
 
     private void resumePausedRoom(BilliardsRoom room) {
+        roomPausedAt.remove(room.getRoomId());
         room.setStatus(BilliardsRoom.GameStatus.PLAYING);
         room.setPendingShotInput(null);
         room.getPendingShotReports().clear();
@@ -997,7 +1009,7 @@ public class RoomService {
         return false;
     }
 
-    private void resetAbandonedRoomForReuse(BilliardsRoom room) {
+    public void resetAbandonedRoomForReuse(BilliardsRoom room) {
         turnTimerService.cancelTimer(room.getRoomId());
         turnTimerService.cancelTimer(room.getRoomId() + SHOT_FINALIZE_TIMER_SUFFIX);
         turnTimerService.cancelPeriodicSync(room.getRoomId());
@@ -1032,7 +1044,40 @@ public class RoomService {
         room.setPlayer1Group("OPEN");
         room.setPlayer2Group("OPEN");
         roomRepository.save(room);
+        roomPausedAt.remove(room.getRoomId());
         log.info("回收无人在线的暂停房间用于复用: roomId={}", room.getRoomId());
+    }
+
+
+    /**
+     * 查找已废弃的 PAUSED 房间
+     * @param minPausedDurationMs 最小暂停时长（毫秒）
+     * @return 符合条件的废弃房间列表
+     */
+    public List<BilliardsRoom> findAbandonedPausedRooms(long minPausedDurationMs) {
+        long now = System.currentTimeMillis();
+        List<BilliardsRoom> abandoned = new ArrayList<>();
+        
+        for (BilliardsRoom room : roomRepository.findAll()) {
+            if (room.getStatus() != BilliardsRoom.GameStatus.PAUSED) {
+                continue;
+            }
+            
+            Long pausedAt = roomPausedAt.get(room.getRoomId());
+            if (pausedAt == null || (now - pausedAt) < minPausedDurationMs) {
+                continue;
+            }
+            
+            // 检查房间中所有玩家是否都不在线
+            boolean anyOnline = room.getPlayerIds().stream()
+                    .anyMatch(WebSocketEventListener::isPlayerOnline);
+            
+            if (!anyOnline) {
+                abandoned.add(room);
+            }
+        }
+        
+        return abandoned;
     }
 
     private void cleanupRoomAfterLeave(BilliardsRoom room) {
@@ -1207,6 +1252,7 @@ public class RoomService {
 
     private String buildStateHash(List<Map<String, Object>> balls) {
         return balls.stream()
+                .sorted(Comparator.comparing(ball -> asString(ball.get("id"))))
                 .map(ball -> String.join(":",
                         asString(ball.get("id")),
                         String.valueOf(quantize(asDouble(ball.get("x")))),

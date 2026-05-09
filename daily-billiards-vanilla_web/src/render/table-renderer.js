@@ -14,7 +14,7 @@ import {
 } from '../constants.js?v=20260429-room-entry-fix'
 import { hasDebugAlwaysDrag, hasDebugOverlay, isPortraitLayout, shouldRotateGameplayStage } from '../layout/mode.js'
 import { Vec2 } from '../math.js'
-import { GameClient } from '../network/game-client.js'
+import { GameClient } from '../network/game-client.js?v=20260509_room_join_snapshot_fix'
 
 const tableSurfaceImage = typeof Image !== 'undefined' ? new Image() : null
 if (tableSurfaceImage) {

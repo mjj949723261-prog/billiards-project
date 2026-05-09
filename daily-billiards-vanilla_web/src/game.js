@@ -34,7 +34,7 @@ import { isPortraitHeldLandscapeSemanticMobile, isPortraitLayout, shouldRemapGam
 import { PixiRenderer } from './render/pixi-renderer.js'
 import { getPocketVisualCenters } from './render/table-renderer.js'
 import { updateGameUi, updateTimerUi } from './ui/dom-ui.js'
-import { GameClient } from './network/game-client.js'
+import { GameClient } from './network/game-client.js?v=20260509_room_join_snapshot_fix'
 import { applyStatusSync, createStatusSyncSnapshot } from './network/state-sync.js'
 import { buildSettledSnapshotPayload, createShotEndReport, snapshotStateFromRoomPayload } from './network/shot-state.js'
 
