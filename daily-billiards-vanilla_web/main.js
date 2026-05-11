@@ -4,7 +4,7 @@
  * 网络事件编排以及全局状态初始化。
  */
 
-import { bootstrapGame } from './src/game.js?v=20260511_aim_wheel_loop_texture'
+import { bootstrapGame } from './src/game.js?v=20260511_aim_wheel_texture_direction_fix'
 import { applyLayoutMode } from './src/layout/mode.js'
 import { GameClient } from './src/network/game-client.js?v=20260509_room_join_snapshot_fix'
 import { resolveRoomEntry } from './src/network/session-entry.js'

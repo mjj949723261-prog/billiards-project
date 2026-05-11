@@ -7,7 +7,7 @@ import { applyStatusSync, createStatusSyncSnapshot } from './src/network/state-s
 import { Vec2 } from './src/math.js'
 import { Ball } from './src/entities/ball.js'
 import { applyLayoutMode, hasDebugAlwaysDrag, isPortraitLayout, resolveRequestedLayoutMode } from './src/layout/mode.js'
-import { computeAimWheelDelta, computePowerStripRatio } from './src/input/bindings.js'
+import { computeAimWheelDelta, computeAimWheelTextureOffset, computePowerStripRatio } from './src/input/bindings.js'
 
 test('power strip reads along the visible axis on rotated mobile shells', () => {
   const verticalRect = { left: 20, right: 50, top: 100, bottom: 500, width: 30, height: 400 }
@@ -47,6 +47,11 @@ test('aim wheel drag reads along the visible axis on rotated mobile shells', () 
     ),
     -40,
   )
+})
+
+test('aim wheel tick texture scrolls opposite the semantic drag delta', () => {
+  assert.equal(computeAimWheelTextureOffset(0, 12), -12)
+  assert.equal(computeAimWheelTextureOffset(5, -8), 13)
 })
 
 test('GameClient can be imported without browser storage globals', async () => {
