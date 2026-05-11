@@ -79,6 +79,7 @@ export function bindGameInput(game) {
   const AIM_WHEEL_SCROLL_STEP_DEGREES = 0.2  // 增加滚轮步进
   const AIM_WHEEL_TICK_PITCH = 52
   const AIM_WHEEL_PIXELS_PER_DEGREE = 88
+  const AIM_WHEEL_TEXTURE_PIXELS_PER_DEGREE = AIM_PIXELS_PER_STEP
   let aimWheelStepPulseTimer = null
   let aimWheelActiveTimer = null
 
@@ -261,8 +262,10 @@ export function bindGameInput(game) {
     if (!aimWheel) return
     const aimDegrees = (game.aimAngle * 180) / Math.PI
     const aimWheelOffset = ((aimDegrees * AIM_WHEEL_PIXELS_PER_DEGREE) % AIM_WHEEL_TICK_PITCH + AIM_WHEEL_TICK_PITCH) % AIM_WHEEL_TICK_PITCH
+    const textureOffset = aimDegrees * AIM_WHEEL_TEXTURE_PIXELS_PER_DEGREE
     aimWheel.style.setProperty('--aim-arc-rotation', `${game.aimAngle}rad`)
     aimWheel.style.setProperty('--aim-wheel-offset', `${aimWheelOffset}px`)
+    aimWheel.style.setProperty('--aim-wheel-texture-offset', `${textureOffset}px`)
   }
 
   const applyAimWheelStepCount = (stepCount) => {
