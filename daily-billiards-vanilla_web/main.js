@@ -839,8 +839,24 @@ const preventTextSelection = (e) => {
 // 监听选择变化事件
 document.addEventListener('selectionchange', preventTextSelection, { passive: true });
 
-// 定期清理选择（针对某些 iOS 版本的额外保护）
-setInterval(preventTextSelection, 300);
+// 定期清理选择（针对某些 iOS 版本的额外保护），进入游戏后启动，离开时清理
+let selectionCleanupInterval = null;
+
+window.startSelectionCleanup = () => {
+    if (!selectionCleanupInterval) {
+        selectionCleanupInterval = setInterval(preventTextSelection, 300);
+    }
+};
+
+window.stopSelectionCleanup = () => {
+    if (selectionCleanupInterval) {
+        clearInterval(selectionCleanupInterval);
+        selectionCleanupInterval = null;
+    }
+};
+
+// 默认启动
+window.startSelectionCleanup();
 
 if (!roomFromUrl && roomEntry.suggestedRoomId) {
     document.getElementById('room-id-input').value = roomEntry.suggestedRoomId;

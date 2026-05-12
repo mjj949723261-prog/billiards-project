@@ -103,7 +103,12 @@ export class BilliardsGame {
     this.toastTimer = null
     /** @type {boolean} 是否显示远程对手的瞄准辅助线。 */
     this.showRemoteCue = false
-    /** @type {boolean} 是否处于“白球在手”状态（自由放置母球）。 */
+    this.syncCounter = 0
+    this.placementSyncCounter = 0
+    this.aimSyncCounter = 0
+    this.lastSyncedPullDistance = 0
+    this.lastAimSyncTime = 0
+    /** @type {boolean} 是否处于”白球在手”状态（自由放置母球）。 */
     this.ballInHand = false
     /** @type {string} “白球在手”的可放置区域（'table' 全场或 'kitchen' 开球区）。 */
     this.ballInHandZone = 'table'
