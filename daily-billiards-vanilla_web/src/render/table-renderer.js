@@ -68,14 +68,13 @@ export function shouldRenderAimGuides(game, isMyTurn = GameClient.isMyTurn) {
 }
 
 export function getRenderedCuePullDistance(game) {
-  // 核心逻辑：只有轮到我时，才在本地显示拉杆距离（力度）。
-  // 对手拉杆时，我的屏幕上球杆只旋转角度，不往后缩，从而隐藏力度。
+  // 无论是谁的回合，只要有拉杆动作就显示拉杆视觉效果
   const isMyTurn = (game.currentPlayer === GameClient.playerIndex);
   if (isMyTurn) {
     return (game.isDragging || game.showRemoteCue) ? game.pullDistance : 0
   } else {
-    // 如果是对手在拉杆，只显示球杆紧贴白球旋转，不显示拉伸
-    return 0
+    // 对手在拉杆时，也显示拉杆动画
+    return game.showRemoteCue ? game.pullDistance : 0
   }
 }
 
