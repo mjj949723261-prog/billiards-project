@@ -12,6 +12,8 @@
  */
 export function createStatusSyncSnapshot(game, now = Date.now()) {
   return {
+    // Sync the remaining lifetime instead of an absolute timestamp so peers can
+    // recreate the toast consistently even when their clocks differ a little.
     statusMessage: game.statusMessage || '',
     statusRemainingMs: Math.max(0, (game.statusUntil || 0) - now),
   }

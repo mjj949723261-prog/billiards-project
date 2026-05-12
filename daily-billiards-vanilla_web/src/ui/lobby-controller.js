@@ -1,4 +1,5 @@
 function deriveLobbyStats(seedSource = '') {
+  // 这里是纯前端展示用的假数据，占位大厅氛围，不代表服务端真实战绩。
   const seedText = String(seedSource || 'guest')
   let hash = 0
   for (const char of seedText) {
@@ -42,6 +43,7 @@ export function bindLobbyActions({ onPrimaryMatch, onJoinRoom, onLogout }) {
     roomInput.focus()
     roomInput.select()
 
+    // 剪贴板读取只是增强体验；浏览器不支持或权限被拒绝时不影响正常输房号。
     if (!navigator.clipboard?.readText) return
 
     try {

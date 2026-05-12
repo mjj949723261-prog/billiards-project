@@ -56,6 +56,8 @@ export function switchTurn(game, withBallInHand = false, ballInHandZone = 'table
 export function evaluateShot(game) {
   if (!game.shotActive || game.isGameOver) return
 
+  // Freeze the rule inputs up front because foul resolution can switch turns
+  // or mutate groups while we are still deciding the outcome of this shot.
   const currentPlayer = game.currentPlayer
   const currentGroup = game.shotState.playerGroupBefore
   const legalFirstTarget = game.getLegalFirstTargetType()
@@ -97,7 +99,8 @@ export function evaluateShot(game) {
     foulMessage = '犯规：开放球局不能先碰黑八'
   }
 
-  // 开放球局下的进球分配球组
+  // 开放球局只在 first legal colored pocket resolves; after that both clients
+  // and the server should treat the table as no longer "open".
   if (!foulMessage && !currentGroup && coloredPocketed.length > 0) {
     applyGroups(game, coloredPocketed[0].type)
   }

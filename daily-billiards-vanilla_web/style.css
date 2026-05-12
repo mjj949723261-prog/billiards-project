@@ -921,6 +921,7 @@ body.layout-landscape.pointer-coarse.viewport-landscape #app-wrapper {
 }
 
 .aim-arc-ticks {
+  /* The color body stays fixed on ::before; only the tick marks scroll here. */
   background:
     url('./assets/aim_wheel_tick_marks_loop_bold.png') center var(--aim-wheel-texture-offset) / 100% auto repeat-y;
   transition: none;

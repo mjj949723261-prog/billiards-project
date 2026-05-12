@@ -59,6 +59,7 @@ export function showMatchmakingView(message = '正在寻找对手...', options =
   } = options
 
   authPanel?.classList.add('hidden')
+  // 匹配浮层是叠加在大厅壳层之上的，不切走 lobby，可以保留房间输入和个人信息上下文。
   lobbyPanel?.classList.remove('hidden')
   matchmakingPanel?.classList.remove('hidden')
   matchmakingPanel?.setAttribute('data-state', state)
@@ -98,6 +99,7 @@ export function showOverlay() {
 
 export function showOverlayError(message) {
   const { authPanel, authError, lobbyError } = getOverlayViews()
+  // 错误落到当前正在看的面板，避免用户在大厅操作时消息却悄悄出现在登录区。
   const target = authPanel?.classList.contains('hidden') ? lobbyError : authError
   if (!target) return
   target.textContent = message

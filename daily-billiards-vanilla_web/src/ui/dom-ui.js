@@ -86,8 +86,10 @@ export function updateGameUi(game) {
   }
 
   if (aimWheel) {
+    // HUD 只反映本地当前是否允许瞄准，避免把对手端的输入状态误显示成自己可操作。
     aimWheel.classList.toggle('is-disabled', !isMyTurn || game.ballInHand || game.isGameOver)
     aimWheel.style.setProperty('--aim-arc-rotation', `${game.aimAngle}rad`)
+    // 偏移使用固定节距循环，目的是让表盘刻度看起来连续滚动，而不是整张贴图整圈跳动。
     const aimWheelTickPitch = 52
     const aimWheelOffset = ((((game.aimAngle * 180) / Math.PI) * 88) % aimWheelTickPitch + aimWheelTickPitch) % aimWheelTickPitch
     aimWheel.style.setProperty('--aim-wheel-offset', `${aimWheelOffset}px`)
@@ -170,6 +172,7 @@ export function renderBallList(game, num, group) {
   remainingTargets.forEach(ball => container.appendChild(createMiniBall(ball)))
 
   if (remainingTargets.length === 0) {
+    // 清光本组后只亮出 8 号球，和真实规则一致，也能给收官阶段一个明确提示。
     const eightBall = game.balls.find(ball => ball.type === 'eight')
     if (eightBall) {
       const eightEl = createMiniBall(eightBall)

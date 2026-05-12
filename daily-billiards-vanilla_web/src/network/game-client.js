@@ -103,6 +103,9 @@ function summarizeSyncContent(content) {
     };
 }
 
+// Keep log formatting in one place so reconnect/sync investigations can compare
+// messages across personal queue, room topic, and authoritative snapshots.
+
 /**
  * 所有网络通信的单例客户端对象。
  */
@@ -186,7 +189,8 @@ export const GameClient = {
             throw new Error(reason);
         }
 
-        // 保存连接参数用于重连
+        // Save the original join intent so automatic reconnect can rebuild the
+        // same room session without asking the UI layer to restitch state.
         this.lastConnectionParams = { nickname, onConnected, requestedRoomId };
         this.nickname = nickname;
         this.connectionState = 'connecting';
@@ -211,7 +215,8 @@ export const GameClient = {
             this.connectionState = 'connected';
             this.reconnectAttempts = 0;  // 重置重连计数
 
-            // 显式房间号入房时，先订阅房间 topic，避免个人队列回包偶发缺失时卡在”入房中”。
+            // Explicit room joins subscribe early so a slow personal-queue echo
+            // cannot leave the UI stuck in "joining" while room snapshots are already flowing.
             if (requestedRoomId) {
                 this.roomId = requestedRoomId;
                 storage.setItem('billiards_room_id', this.roomId);
@@ -233,8 +238,9 @@ export const GameClient = {
                     this.subscribeToRoom(this.roomId);
                 }
 
-                // 个人队列里的 JOIN / ERROR / ROOM_SNAPSHOT 都需要进入统一分发，
-                // 否则显式入房失败时会一直停在”正在加入房间”。
+                // Personal-queue JOIN / ERROR / ROOM_SNAPSHOT must go through the
+                // same dispatcher as topic traffic, or explicit room entry can
+                // dead-end in UI state that never sees the recovery snapshot.
                 this.onMessageReceived(msg);
             });
 

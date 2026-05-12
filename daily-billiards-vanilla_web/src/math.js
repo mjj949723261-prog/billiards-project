@@ -23,6 +23,7 @@ export class Vec2 {
    * @returns {Vec2} 返回自身以支持链式调用。
    */
   add(v) {
+    // Vec2 设计成原地修改，物理和渲染循环里可以少分配很多临时对象。
     this.x += v.x;
     this.y += v.y;
     return this;
@@ -55,6 +56,7 @@ export class Vec2 {
    * @returns {Vec2} 具有相同坐标的新 Vec2 实例。
    */
   clone() {
+    // 只有在确实需要保留旧值时才 clone，避免把所有运算都写成高频新建对象。
     return new Vec2(this.x, this.y);
   }
 
@@ -95,6 +97,7 @@ export class Vec2 {
    * @returns {number} v1 和 v2 之间的距离。
    */
   static distance(v1, v2) {
+    // 保留静态版本，方便在只关心两点距离时不必先构造差向量。
     return Math.sqrt((v1.x - v2.x) ** 2 + (v1.y - v2.y) ** 2);
   }
 }

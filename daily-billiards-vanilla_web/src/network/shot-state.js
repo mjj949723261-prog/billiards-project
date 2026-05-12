@@ -17,6 +17,8 @@ function sortBallStates(states) {
 }
 
 export function normalizeBallStateFromBalls(balls) {
+  // Stable ordering + quantization gives us deterministic hashes across clients,
+  // which is what lets lightweight sync decide whether two settled tables match.
   return sortBallStates(
     balls.map(ball => {
       const pos = ball.physicsPos || ball.pos || new Vec2(0, 0)
@@ -80,6 +82,8 @@ export function buildBallStateHash(normalizedStates) {
 export function buildSettledSnapshotPayload(game) {
   const normalized = normalizeBallStateFromBalls(game.balls)
   return {
+    // Send denormalized coordinates for easy application, but keep the hash built
+    // from the normalized version so tiny floating-point drift does not fork rooms.
     balls: denormalizeBallState(normalized),
     stateHash: buildBallStateHash(normalized),
   }
@@ -118,4 +122,3 @@ export function snapshotStateFromRoomPayload(roomLike = {}) {
     stateHash: roomLike.stateHash || '',
   }
 }
-

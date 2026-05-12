@@ -195,6 +195,9 @@ export class BilliardsGame {
     const baseHeight = isPortrait ? TABLE_WIDTH : TABLE_HEIGHT;
 
     const railVisualPx = Math.max(10, Math.min(Math.min(availableWidth, availableHeight) * 0.026, 18))
+    // Semantic-landscape mobile keeps the gameplay meaning fixed across device
+    // rotation, so we collapse the usual portrait/desktop chrome padding down
+    // to a tiny inset instead of switching to a different table layout.
     const semanticGameplayInset = isSemanticMobileGameplay
       ? Math.max(1, Math.min(Math.min(availableWidth, availableHeight) * 0.002, 3))
       : null
@@ -587,6 +590,9 @@ export class BilliardsGame {
     const isAuthoritative = snapshot.authoritative === true;
     const isLive = snapshot.isLive === true;
     const isSettledSync = snapshot.syncKind === 'settled' || snapshot.syncKind === 'authoritative-settled';
+    // During local ball-in-hand placement we let the shooter keep dragging
+    // through authoritative room bookkeeping updates, otherwise the cue ball
+    // would snap back under the player's finger on every server echo.
     const preserveLocalCuePlacement = isAuthoritative
       && snapshot.forceBusinessUpdate !== true
       && this.ballInHand
@@ -638,6 +644,8 @@ export class BilliardsGame {
       }
     })
 
+    // Placement preview packets only exist to mirror the cue-ball position,
+    // so they stop here and do not overwrite turn/shot metadata.
     if (isPlacementLiveSync && !snapshot.forceBusinessUpdate) return;
     if (!isAuthoritative && !isSettledSync && isLive && !isPlacementLiveSync && !snapshot.forceBusinessUpdate) return;
     const room = snapshot.room || snapshot;

@@ -28,7 +28,7 @@ export function getAimGuide(cueBall, balls, direction) {
   let bestHit = null
   const candidates = balls.filter(ball => !ball.pocketed && ball !== cueBall)
 
-  // 遍历所有目标球，检查射线是否与球体相交
+  // 这里只求“第一命中体”，因为辅助线的目标是帮助玩家判断首碰，不是完整模拟多次连锁碰撞。
   candidates.forEach(ball => {
     const toBall = ball.pos.clone().sub(cueBall.pos)
     const projection = toBall.dot(rayDir)
@@ -89,7 +89,7 @@ export function getWallAimDistance(start, direction) {
   const bottomLimit = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET_BOTTOM
   const distances = []
 
-  // 计算到四面库边的投影距离
+  // 库边距离用球心可活动区域来算，而不是桌面外框，保证辅助线和真实碰撞边界一致。
   if (direction.x > 0) distances.push((rightLimit - start.x) / direction.x)
   if (direction.x < 0) distances.push((leftLimit - start.x) / direction.x)
   if (direction.y > 0) distances.push((bottomLimit - start.y) / direction.y)
@@ -115,6 +115,7 @@ export function getProjectedTravel(start, direction, limit = 220) {
   const bottomLimit = TABLE_HEIGHT / 2 - PLAYABLE_AREA_INSET_BOTTOM
   const distances = [limit]
 
+  // 这里故意保留一个最大长度上限，避免预测线在长距离空旷台面上拉得过长压住主要视野。
   if (unitDirection.x > 0) distances.push((rightLimit - start.x) / unitDirection.x)
   if (unitDirection.x < 0) distances.push((leftLimit - start.x) / unitDirection.x)
   if (unitDirection.y > 0) distances.push((bottomLimit - start.y) / unitDirection.y)

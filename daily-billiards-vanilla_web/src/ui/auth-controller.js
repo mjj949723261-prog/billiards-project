@@ -2,6 +2,7 @@ import { AuthService } from '../network/auth-service.js'
 
 export function bindAuthActions({ onLoggedIn, onGuestMode, showError, clearError }) {
   document.getElementById('tab-login').addEventListener('click', () => {
+    // 切换 tab 时主动清理错误，避免注册失败信息残留到登录表单里造成误导。
     document.getElementById('tab-login').classList.add('active')
     document.getElementById('tab-register').classList.remove('active')
     document.getElementById('login-form').classList.remove('hidden')
@@ -50,6 +51,7 @@ export function bindAuthActions({ onLoggedIn, onGuestMode, showError, clearError
 
   document.getElementById('btn-guest-play').addEventListener('click', () => {
     clearError()
+    // 游客模式绕过后端账号体系，但后续大厅/进房/对局仍沿用同一套入口。
     onGuestMode({ nickname: '游客玩家', username: 'guest' })
   })
 }

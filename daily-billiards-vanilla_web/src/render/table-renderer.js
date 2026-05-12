@@ -18,6 +18,8 @@ import { GameClient } from '../network/game-client.js?v=20260509_room_join_snaps
 
 const tableSurfaceImage = typeof Image !== 'undefined' ? new Image() : null
 if (tableSurfaceImage) {
+  // Preload once at module scope so gameplay renderers can reuse the same table asset
+  // without flashing between canvas fallback and textured table variants.
   tableSurfaceImage.src = './assets/table-surface.png'
 }
 
@@ -27,6 +29,8 @@ export function resolveTableSurfaceSourceRect(
   targetWidth = TABLE_WIDTH + RAIL_THICKNESS * 2,
   targetHeight = TABLE_HEIGHT + RAIL_THICKNESS * 2,
 ) {
+  // 当前台面图就是按整张等比使用的，所以这里先返回 full image；
+  // 单独保留这个入口，是为了以后如果要裁切不同皮肤资源，不用改调用侧。
   return {
     x: 0,
     y: 0,
@@ -36,6 +40,8 @@ export function resolveTableSurfaceSourceRect(
 }
 
 export function getPocketVisualCenters() {
+  // Pocket visuals are offset from the mathematical playfield corners so the rendered
+  // jaws line up with the art, not just the idealized rectangular collision box.
   const rollAreaX = -TABLE_WIDTH / 2 + PLAYABLE_AREA_INSET_LEFT
   const rollAreaY = -TABLE_HEIGHT / 2 + PLAYABLE_AREA_INSET_TOP
   const rollAreaWidth = TABLE_WIDTH - PLAYABLE_AREA_INSET_LEFT - PLAYABLE_AREA_INSET_RIGHT
@@ -57,6 +63,7 @@ export function getPocketVisualCenters() {
 }
 
 export function shouldRenderAimGuides(game, isMyTurn = GameClient.isMyTurn) {
+  // 远端球杆展示和本地辅助线是两套语义，看到对手球杆时不应再叠加自己的预测线。
   return !game.showRemoteCue && isMyTurn
 }
 
@@ -94,6 +101,8 @@ export function drawGame(game) {
   }
 
   if (tableSurfaceImage && tableSurfaceImage.complete && tableSurfaceImage.naturalWidth > 0) {
+    // Prefer the authored table art when it is ready, but keep the procedural
+    // fallback below so the game stays playable even if the asset is missing.
     const sourceRect = resolveTableSurfaceSourceRect(
       tableSurfaceImage.naturalWidth,
       tableSurfaceImage.naturalHeight,
@@ -120,6 +129,7 @@ export function drawGame(game) {
     ctx.shadowOffsetX = 0
     ctx.shadowOffsetY = 0
   } else {
+  // 这一整段是 canvas 兜底台面。就算外部图片丢失、缓存未命中或本地静态资源路径异常，游戏也能继续跑。
 
   // Table shadow
   ctx.shadowColor = 'rgba(0, 0, 0, 0.8)'
@@ -396,6 +406,7 @@ function drawAimAndCue(game, ctx) {
     ctx.fill()
 
     if (guide.type === 'ball') {
+      // 目标球命中预览和母球偏转预览必须同时出现，否则玩家会误以为辅助线只预测第一段路径。
       drawBallGuide(game, ctx, guide, direction)
       
       ctx.save()
@@ -430,7 +441,7 @@ function drawPowerBar(game, ctx, powerRatio) {
     ctx.fillStyle = 'rgba(0,0,0,0.5)'
     ctx.fillRect(x, y, barWidth, barHeight)
     
-    // Gradient fill based on power
+    // Canvas 版保持连续渐变，和 DOM/Pixi 版本共用同一强度语义，但不强行共享实现。
     const grad = ctx.createLinearGradient(x, y + barHeight, x, y)
     grad.addColorStop(0, '#16a34a') // Green
     grad.addColorStop(0.5, '#fbbf24') // Yellow
@@ -510,6 +521,7 @@ function drawCueStick(game, ctx, angle, powerRatio) {
   ctx.save()
   ctx.translate(game.cueBall.renderPos.x, game.cueBall.renderPos.y)
   ctx.rotate(angle + Math.PI)
+  // 这里同样只读渲染态 pull，保证鼠标拖拽、触控拖拽、远端回放都能得到一致的球杆后撤效果。
   const pull = getRenderedCuePullDistance(game)
   const cueBase = BALL_RADIUS + 2 + pull
   const tipLength = 6

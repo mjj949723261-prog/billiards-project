@@ -60,6 +60,8 @@ export class AudioManager {
     const ctx = this.ensureContext(true);
     if (!ctx) return Promise.resolve(false);
     if (this.unlocked && ctx.state === 'running') return Promise.resolve(true);
+    // 浏览器通常要求首次真实手势后才能启用音频，这里把并发解锁合并成一次，
+    // 避免一次点击触发多个 UI 入口时重复 resume/context warm-up。
     if (this.unlockPromise) return this.unlockPromise;
 
     const resumePromise =
@@ -113,6 +115,7 @@ export class AudioManager {
     const ctx = this.ensureContext(false);
     if (!ctx || ctx.state !== 'running') return;
     const now = ctx.currentTime;
+    // 所有过程式音效最终都会落到这个基础包络上，具体的击球/碰撞/入袋只是参数预设。
 
     let source;
     if (noise) {
@@ -188,6 +191,7 @@ export class AudioManager {
    */
   playBallCollision(intensity = 0.4) {
     const now = performance.now();
+    // 连续碰撞在同一帧内可能触发很多次，做节流是为了避免耳朵里变成噪音墙。
     if (now - this.lastCollisionAt < 30) return;
     this.lastCollisionAt = now;
 
@@ -209,6 +213,7 @@ export class AudioManager {
    */
   playRailHit(intensity = 0.35) {
     const now = performance.now();
+    // 撞库和球碰撞都会在密集运动时频繁出现，单独限流可以保留反馈而不至于炸音。
     if (now - this.lastRailAt < 40) return;
     this.lastRailAt = now;
 
@@ -229,6 +234,7 @@ export class AudioManager {
    */
   playPocket() {
     const now = performance.now();
+    // 入袋声保留更长的冷却，避免母球和目标球连环落袋时叠出失真的长尾。
     if (now - this.lastPocketAt < 80) return;
     this.lastPocketAt = now;
     this.playEnvelope({

@@ -27,6 +27,8 @@ import { isBallCapturedByPocket } from './pocket-geometry.js'
 
 const DEBUG_JITTER = typeof window !== 'undefined' && window.location.hash.includes('debug-jitter')
 const BASE_FRAME_MS = 1000 / 60
+// Resolve the same simulation slice multiple times so dense packs settle before
+// the next render, which noticeably reduces jitter without going full server physics.
 const COLLISION_ITERATIONS = 6
 const POSITION_CORRECTION = 0.68
 const POSITION_SLOP = 0.02
@@ -157,12 +159,16 @@ export function updateGamePhysics(game, frameMs = BASE_FRAME_MS) {
 
   let substeps = 0
   let settledDuringPhysicsStep = false
+  // Fixed-step simulation keeps collision ordering stable even when rendering
+  // slows down or a mobile browser delivers uneven frame times.
   while (game.physicsAccumulatorMs >= FIXED_TIMESTEP_MS && substeps < MAX_PHYSICS_STEPS_PER_FRAME) {
     const dtScale = FIXED_TIMESTEP_MS / BASE_FRAME_MS
     const cueCollision = findEarliestCueBallCollision(game, active, dtScale)
     let renderSnapTargets = null
 
     if (cueCollision) {
+      // Rewind the substep to the exact first cue-ball impact so we can capture
+      // the legally relevant first contact before later overlaps muddy the state.
       if (cueCollision.time > 0) {
         active.forEach(ball => {
           ball.update(cueCollision.time)

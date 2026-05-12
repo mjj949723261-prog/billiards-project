@@ -44,6 +44,9 @@ export function hasDebugOverlay(win = globalThis.window) {
 
 export function isLandscapeSemanticMobile(doc = globalThis.document) {
   const body = doc?.body
+  // "Landscape semantic" means gameplay keeps a horizontal mental model even
+  // when the device is physically portrait, so controls and input remapping
+  // can branch off this one flag instead of re-checking viewport shape everywhere.
   return !!(body?.classList.contains('layout-landscape')
     && body?.classList.contains('pointer-coarse'))
 }
@@ -113,6 +116,9 @@ export function applyLayoutMode(doc = globalThis.document, win = globalThis.wind
     : coarsePointer
       ? false
       : requestedPortrait
+  // Portrait-held phones keep the landscape shell mounted, so expose a scale
+  // factor that CSS can use for safe-area and chrome compensation without
+  // introducing a second portrait-specific gameplay layout.
   const semanticLandscapeScale = coarsePointer && viewportPortrait && Math.max(viewportWidth, viewportHeight) > 0
     ? Math.min(viewportWidth, viewportHeight) / Math.max(viewportWidth, viewportHeight)
     : 1

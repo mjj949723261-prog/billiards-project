@@ -73,6 +73,7 @@ export const LOGICAL_WIDTH = TABLE_WIDTH + RAIL_THICKNESS * 2;
 /** @type {number} 包含库边在内的球桌逻辑总高度。 */
 export const LOGICAL_HEIGHT = TABLE_HEIGHT + RAIL_THICKNESS * 2;
 
+/** 这里的 portrait logical 尺寸不是“竖屏玩法”，而是同一套横屏语义在物理竖持设备上的坐标换位结果。 */
 /** @type {number} 竖屏布局模式下的逻辑总宽度。 */
 export const PORTRAIT_LOGICAL_WIDTH = TABLE_HEIGHT + RAIL_THICKNESS * 2;
 

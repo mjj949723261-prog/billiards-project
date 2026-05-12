@@ -12,7 +12,9 @@
  */
 export function resolveRoomEntry(roomFromUrl, lastRoomId) {
   return {
+    // 显式分享链接优先级最高，只要 URL 带 room 就直接按该房间处理。
     autoJoinRoomId: roomFromUrl || null,
+    // 历史房间只用于输入框提示，不能反过来覆盖外部分享链接的目标房间。
     suggestedRoomId: roomFromUrl || lastRoomId || '',
   }
 }

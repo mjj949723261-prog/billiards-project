@@ -84,6 +84,8 @@ export const AuthService = {
      * @param {Object} authData 
      */
     saveSession(authData) {
+        // 登录态放 localStorage，保证刷新或重新打开后还能恢复账号玩家身份；
+        // 游客 playerId 则仍交给 sessionStorage，避免访客状态无限长期滞留。
         localStore.setItem(TOKEN_KEY, authData.token);
         localStore.setItem(USER_KEY, JSON.stringify({
             id: authData.id,
@@ -99,6 +101,7 @@ export const AuthService = {
     logout() {
         localStore.removeItem(TOKEN_KEY);
         localStore.removeItem(USER_KEY);
+        // 退出账号时顺带清游客会话，避免账号/游客身份在同一设备上串线。
         sessionStore.removeItem('billiards_player_id');
         sessionStore.removeItem('billiards_nickname');
     },
@@ -137,6 +140,7 @@ export const AuthService = {
         const token = this.getToken();
         const headers = options.headers || {};
         
+        // 统一从这里补 Authorization，避免各业务模块自己拼 JWT 头而出现漏传。
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }

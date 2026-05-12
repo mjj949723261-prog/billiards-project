@@ -41,6 +41,8 @@ export function computeAimWheelDelta(previousPoint, currentPoint, { portraitHeld
 }
 
 export function computeAimWheelTextureOffset(currentOffset, deltaY) {
+  // Keep the visible tick strip scrolling opposite to the finger movement,
+  // so the wheel reads like a physical roller instead of a texture glued to the shell.
   return currentOffset - deltaY
 }
 
@@ -265,6 +267,7 @@ export function bindGameInput(game) {
   const syncAimWheelVisual = () => {
     if (!aimWheel) return
     const aimDegrees = (game.aimAngle * 180) / Math.PI
+    // The indicator uses quantized angle steps, so it can safely wrap in a short visual cycle.
     const aimWheelOffset = ((aimDegrees * AIM_WHEEL_PIXELS_PER_DEGREE) % AIM_WHEEL_TICK_PITCH + AIM_WHEEL_TICK_PITCH) % AIM_WHEEL_TICK_PITCH
     aimWheel.style.setProperty('--aim-arc-rotation', `${game.aimAngle}rad`)
     aimWheel.style.setProperty('--aim-wheel-offset', `${aimWheelOffset}px`)
@@ -272,6 +275,8 @@ export function bindGameInput(game) {
 
   const scrollAimWheelTexture = (deltaY) => {
     if (!aimWheel || Math.abs(deltaY) <= 0.001) return
+    // Drive the tick texture from raw pointer delta so the strip stays continuous
+    // even while the actual aim angle is snapped into discrete degree steps.
     aimWheelTextureOffsetPx = computeAimWheelTextureOffset(aimWheelTextureOffsetPx, deltaY)
     aimWheel.style.setProperty('--aim-wheel-texture-offset', `${aimWheelTextureOffsetPx}px`)
   }
@@ -355,6 +360,8 @@ export function bindGameInput(game) {
       portraitHeldLandscapeSemanticMobile: isPortraitHeldLandscapeSemanticMobile(document),
     })
     lastAimPointerPoint = currentPoint
+    // Update the roller texture first so the eye tracks a continuous strip,
+    // then apply angle stepping for actual gameplay state.
     scrollAimWheelTexture(deltaY)
     stepAimWheelByDeltaY(deltaY)
     e.stopPropagation()

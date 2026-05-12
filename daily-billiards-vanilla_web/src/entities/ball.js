@@ -99,6 +99,7 @@ function mat3Normalize(m) {
     let v1 = {x: m[0], y: m[1], z: m[2]};
     let v2 = {x: m[3], y: m[4], z: m[5]};
     
+    // 旋转矩阵经过逐帧插值后会慢慢失真，这里在渲染侧把它拉回正交基，避免球体贴图越滚越歪。
     // Normalize v1
     let l1 = Math.sqrt(v1.x*v1.x + v1.y*v1.y + v1.z*v1.z);
     if (l1 < 1e-6) return m; // 防止除零
@@ -165,6 +166,7 @@ export class Ball {
     this.pocketAnimation = null;
 
     Object.defineProperties(this, {
+      // 老代码里很多地方仍然使用 pos/vel/rotMat，保留别名可以逐步迁移而不必一次性全改。
       pos: {
         get: () => this.physicsPos,
         set: (value) => { this.physicsPos = value; },
@@ -200,7 +202,7 @@ export class Ball {
     const speed = this.physicsVel.length();
     this.physicsPos.add(this.physicsVel.clone().mul(dt));
 
-    // 根据移动距离和方向更新 3D 旋转矩阵
+    // 物理层直接维护滚动姿态，这样 shader 里显示出来的条纹和号码会跟着真实滚动，而不是假转。
     if (speed > 0.01) {
       const angle = (speed * dt) / BALL_RADIUS;
       const axisX = -this.physicsVel.y / speed;
@@ -209,7 +211,7 @@ export class Ball {
       this.physicsRot = mat3Multiply(rot, this.physicsRot);
     }
 
-    // 优化后的单一摩擦力模型
+    // 摩擦拆成指数阻力 + 线性减速两段，是为了既保留速度衰减手感，又能在末端干净停下。
     // 1. 基础阻力
     this.physicsVel.mul(Math.pow(0.992, dt)); 
 
@@ -237,6 +239,7 @@ export class Ball {
     const smoothFactor = 1.0 - Math.exp(-k * Math.max(0, dt));
 
     if (this.pocketAnimation?.active) {
+      // 进袋时渲染层临时接管位置和缩放，物理层已经结束，不再让插值把球“拉回桌面”。
       this.renderPos.x = this.pocketAnimation.renderPos.x
       this.renderPos.y = this.pocketAnimation.renderPos.y
       this.renderPocketScale = this.pocketAnimation.scale
@@ -256,6 +259,7 @@ export class Ball {
 
     this.renderPocketScale = 1;
     this.renderPocketAlpha = 1;
+    // physics/render 双轨的目的，是让同步修正和固定步长物理不直接把画面抖出来。
     this.renderPos.x += (this.physicsPos.x - this.renderPos.x) * smoothFactor;
     this.renderPos.y += (this.physicsPos.y - this.renderPos.y) * smoothFactor;
 

@@ -116,7 +116,7 @@ export class PixiRenderer {
         this.mainContainer = new PIXI.Container();
         this.app.stage.addChild(this.mainContainer);
 
-        // Layers
+        // 渲染分层固定下来后，后续每帧只更新需要动的对象，避免台面、阴影、UI 相互污染。
         this.staticLayer = new PIXI.Container();
         this.mainContainer.addChild(this.staticLayer);
         
@@ -150,6 +150,7 @@ export class PixiRenderer {
         }
         textures.ballShadow = PIXI.Texture.from(AssetsBase64.shadow);
         textures.tableSurface = PIXI.Texture.from('./assets/table-surface.png');
+        // 台面主图是异步资源，到图之前先走程序化台面兜底，加载完成后再重绘静态层切换过去。
         if (!textures.tableSurface.baseTexture.valid) {
             textures.tableSurface.baseTexture.once('loaded', () => this.drawStaticTable());
         }
@@ -203,6 +204,7 @@ export class PixiRenderer {
         this.mainContainer.x = availableWidth / 2;
         this.mainContainer.y = availableHeight / 2;
         this.mainContainer.scale.set(fittedScale);
+        // 这里把视觉库边厚度反算回世界坐标，保证不同缩放下球台边框看起来仍然是同一套 UI 厚度。
         this.visualRailThickness = fittedScale > 0 ? railVisualPx / fittedScale : RAIL_THICKNESS;
         this.drawStaticTable();
         
@@ -265,6 +267,7 @@ export class PixiRenderer {
         const showDebugOverlay = hasDebugOverlay(window);
 
         if (this.textures.tableSurface?.baseTexture?.valid) {
+            // 有美术台面时优先直接贴整图，程序化绘制只保留为缺图/加载中的回退路径。
             const tableShadow = new PIXI.Graphics();
             tableShadow.beginFill(0x000000, 0.24);
             tableShadow.drawRoundedRect(-borderW / 2 - 10, -borderH / 2 - 4, borderW + 20, borderH + 18, 28);
@@ -435,6 +438,7 @@ export class PixiRenderer {
         const activeBalls = new Set();
         
         if (!ballGeometry && window.PIXI) {
+            // 所有球共享同一份 mesh 几何，只替换 shader uniform，避免每颗球都重新建顶点数据。
             ballGeometry = new PIXI.Geometry()
                 .addAttribute('aVertexPosition', [-1, -1, 1, -1, 1, 1, -1, 1], 2)
                 .addAttribute('aTextureCoord', [0, 0, 1, 0, 1, 1, 0, 1], 2)
@@ -466,6 +470,7 @@ export class PixiRenderer {
             if (!sprite) {
                 const num = ball.label ? parseInt(ball.label) : 0;
                 
+                // 球号贴图和颜色都是 uniform/texture 级别的差异，几何和着色流程本身完全复用。
                 const shader = PIXI.Shader.from(ballVertShader, ballFragShader, {
                     uSampler: this.textures[`label_${num}`],
                     uColor: ball.colorRgb,
@@ -491,6 +496,7 @@ export class PixiRenderer {
 
         for (const [ball, sprite] of this.ballSprites.entries()) {
             if (!activeBalls.has(ball)) {
+                // pocket 动画结束后再真正销毁 sprite，避免刚进袋时直接从视觉上“硬消失”。
                 this.ballLayer.removeChild(sprite);
                 sprite.destroy();
                 this.ballSprites.delete(ball);
@@ -537,6 +543,7 @@ export class PixiRenderer {
         }
 
         if (!game.ballInHand && !game.isMoving() && !game.shotActive && !game.hasVisualMotion?.() && !game.cueBall.pocketed && !game.isGameOver) {
+            // 球静止后才画瞄准辅助，避免运动中的预测线和真实轨迹同时出现造成误判。
             this.drawAimAndCue(game);
         } else {
             this.cueStick.clear();
@@ -622,6 +629,7 @@ export class PixiRenderer {
             g.endFill();
 
             if (guide.type === 'ball') {
+                // 命中目标球时同时画目标球去向和母球偏转，帮助玩家预判碰撞后的分离路线。
                 this.drawBallGuide(game, g, guide, direction);
                 g.lineStyle(1, 0xffffff, 0.3 * 0.8);
                 g.beginFill(0xffffff, 0.3);
@@ -678,6 +686,7 @@ export class PixiRenderer {
         const cue = this.cueStick;
         cue.clear();
         
+        // 球杆后撤完全由渲染态 pull 控制，不直接绑定输入事件，这样本地拖拽和远端同步都能走同一表现层。
         const pull = getRenderedCuePullDistance(game);
         const cueBase = BALL_RADIUS + 2 + pull;
         const tipLength = 6;
@@ -739,6 +748,7 @@ export class PixiRenderer {
         g.drawRect(x, y, barWidth, barHeight);
         g.endFill();
         
+        // Pixi 版力度条只保留高层级命中反馈，不复刻 DOM 侧那套更复杂的纹理与刻度。
         let powerColor = 0x16a34a; 
         if (powerRatio > 0.5) powerColor = 0xfbbf24; 
         if (powerRatio > 0.8) powerColor = 0xdc2626; 
