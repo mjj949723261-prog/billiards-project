@@ -7,6 +7,10 @@
 import {
   TABLE_WIDTH,
   TABLE_HEIGHT,
+  LOGICAL_WIDTH,
+  LOGICAL_HEIGHT,
+  PORTRAIT_LOGICAL_WIDTH,
+  PORTRAIT_LOGICAL_HEIGHT,
   BALL_RADIUS,
   FIXED_TIMESTEP_MS,
   POCKET_RADIUS,
@@ -22,7 +26,7 @@ import {
   HEAD_STRING_X,
   SHOT_POWER_SCALE,
   RELEASE_FLASH_DURATION,
-} from './constants.js?v=20260429-room-entry-fix'
+} from './constants.js?v=20260512_table_surface_restore'
 import { Vec2 } from './math.js'
 import { Ball } from './entities/ball.js'
 import { AudioManager } from './audio/audio-manager.js'
@@ -31,8 +35,8 @@ import { onBallPocketed, updateGamePhysics } from './core/physics.js'
 import { applyGroups, evaluateShot, switchTurn } from './core/rules.js'
 import { bindGameInput } from './input/bindings.js?v=20260511_aim_wheel_texture_direction_fix'
 import { isPortraitHeldLandscapeSemanticMobile, isPortraitLayout, shouldRemapGameplayInput, shouldRotateGameplayStage } from './layout/mode.js'
-import { PixiRenderer } from './render/pixi-renderer.js'
-import { getPocketVisualCenters } from './render/table-renderer.js'
+import { PixiRenderer } from './render/pixi-renderer.js?v=20260512_table_surface_restore'
+import { getPocketVisualCenters } from './render/table-renderer.js?v=20260512_table_surface_restore'
 import { updateGameUi, updateTimerUi } from './ui/dom-ui.js'
 import { GameClient } from './network/game-client.js?v=20260509_room_join_snapshot_fix'
 import { applyStatusSync, createStatusSyncSnapshot } from './network/state-sync.js'
@@ -196,10 +200,10 @@ export class BilliardsGame {
     const body = document.body
     const isSemanticMobileGameplay = body?.classList.contains('layout-landscape')
       && body?.classList.contains('pointer-coarse')
-    const baseWidth = isPortrait ? TABLE_HEIGHT : TABLE_WIDTH;
-    const baseHeight = isPortrait ? TABLE_WIDTH : TABLE_HEIGHT;
-
-    const railVisualPx = Math.max(10, Math.min(Math.min(availableWidth, availableHeight) * 0.026, 18))
+    // 缩放基准统一按整张球桌计算，木边已经包含在台面贴图和逻辑桌面尺寸里，
+    // 不能再额外拿内场 2:1 去 fit，否则贴图桌面和实际布局口径会分叉。
+    const baseWidth = isPortrait ? PORTRAIT_LOGICAL_WIDTH : LOGICAL_WIDTH;
+    const baseHeight = isPortrait ? PORTRAIT_LOGICAL_HEIGHT : LOGICAL_HEIGHT;
     // Semantic-landscape mobile keeps the gameplay meaning fixed across device
     // rotation, so we collapse the usual portrait/desktop chrome padding down
     // to a tiny inset instead of switching to a different table layout.
@@ -221,7 +225,7 @@ export class BilliardsGame {
     this.viewScale = fittedScale;
     this.renderScale = fittedScale * dpr;
 
-    this.renderer.resize(availableWidth, availableHeight, dpr, fittedScale, isPortrait, railVisualPx);
+    this.renderer.resize(availableWidth, availableHeight, dpr, fittedScale, isPortrait);
 
     if (new URLSearchParams(window.location.search).get('hideTopView') === '1') {
         const ui = document.getElementById('ui-layer');

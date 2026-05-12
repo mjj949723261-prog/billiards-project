@@ -4,7 +4,7 @@
  * 包括回合切换、自由球（白球在手）规则、球组分配以及击球合法性评估。
  */
 
-import { TURN_TIME_LIMIT } from '../constants.js?v=20260429-room-entry-fix'
+import { TURN_TIME_LIMIT } from '../constants.js?v=20260512_table_surface_restore'
 
 /**
  * 在产生第一个合法进球后，为玩家分配球组（全色或花色）。

@@ -2,8 +2,8 @@ import { AssetsBase64 } from './assets.js';
 import {
   BALL_RADIUS, HEAD_STRING_X, MAX_PULL_DISTANCE, PLAYABLE_AREA_INSET_BOTTOM, PLAYABLE_AREA_INSET_LEFT,
   PLAYABLE_AREA_INSET_RIGHT, PLAYABLE_AREA_INSET_TOP, POCKET_RADIUS,
-  RAIL_THICKNESS, RELEASE_FLASH_DURATION, TABLE_HEIGHT, TABLE_WIDTH
-} from '../constants.js?v=20260429-room-entry-fix';
+  LOGICAL_HEIGHT, LOGICAL_WIDTH, RAIL_THICKNESS, RELEASE_FLASH_DURATION, TABLE_HEIGHT, TABLE_WIDTH
+} from '../constants.js?v=20260512_table_surface_restore';
 import { hasDebugAlwaysDrag, hasDebugOverlay, isPortraitLayout } from '../layout/mode.js';
 import { Vec2 } from '../math.js';
 import { GameClient } from '../network/game-client.js?v=20260509_room_join_snapshot_fix';
@@ -92,7 +92,6 @@ let ballGeometry = null;
 export class PixiRenderer {
     constructor(game) {
         this.game = game;
-        this.visualRailThickness = RAIL_THICKNESS;
         this.app = new PIXI.Application({
             width: window.innerWidth,
             height: window.innerHeight,
@@ -198,14 +197,12 @@ export class PixiRenderer {
         return textures;
     }
 
-    resize(availableWidth, availableHeight, dpr, fittedScale, isPortrait, railVisualPx) {
+    resize(availableWidth, availableHeight, dpr, fittedScale, isPortrait) {
         this.app.renderer.resize(availableWidth, availableHeight);
         
         this.mainContainer.x = availableWidth / 2;
         this.mainContainer.y = availableHeight / 2;
         this.mainContainer.scale.set(fittedScale);
-        // 这里把视觉库边厚度反算回世界坐标，保证不同缩放下球台边框看起来仍然是同一套 UI 厚度。
-        this.visualRailThickness = fittedScale > 0 ? railVisualPx / fittedScale : RAIL_THICKNESS;
         this.drawStaticTable();
         
         if (isPortrait) {
@@ -257,9 +254,6 @@ export class PixiRenderer {
     drawStaticTable() {
         this.staticLayer.removeChildren();
         this.resetUiOverlayLayers();
-        const railThickness = this.visualRailThickness;
-        const borderW = TABLE_WIDTH + this.visualRailThickness * 2;
-        const borderH = TABLE_HEIGHT + this.visualRailThickness * 2;
         const rollAreaX = -TABLE_WIDTH / 2 + PLAYABLE_AREA_INSET_LEFT;
         const rollAreaY = -TABLE_HEIGHT / 2 + PLAYABLE_AREA_INSET_TOP;
         const rollAreaWidth = TABLE_WIDTH - PLAYABLE_AREA_INSET_LEFT - PLAYABLE_AREA_INSET_RIGHT;
@@ -267,10 +261,10 @@ export class PixiRenderer {
         const showDebugOverlay = hasDebugOverlay(window);
 
         if (this.textures.tableSurface?.baseTexture?.valid) {
-            // 有美术台面时优先直接贴整图，程序化绘制只保留为缺图/加载中的回退路径。
+            // 有美术图时，所有尺寸统一用固定逻辑值（图片按 888×478 设计）
             const tableShadow = new PIXI.Graphics();
             tableShadow.beginFill(0x000000, 0.24);
-            tableShadow.drawRoundedRect(-borderW / 2 - 10, -borderH / 2 - 4, borderW + 20, borderH + 18, 28);
+            tableShadow.drawRoundedRect(-LOGICAL_WIDTH / 2 - 10, -LOGICAL_HEIGHT / 2 - 4, LOGICAL_WIDTH + 20, LOGICAL_HEIGHT + 18, 28);
             tableShadow.endFill();
             tableShadow.y = 12;
             tableShadow.filters = [new PIXI.BlurFilter(10)];
@@ -280,7 +274,7 @@ export class PixiRenderer {
             tableSurface.anchor.set(0.5);
             const textureWidth = this.textures.tableSurface.baseTexture.width || 1;
             const textureHeight = this.textures.tableSurface.baseTexture.height || 1;
-            const containScale = Math.min(borderW / textureWidth, borderH / textureHeight);
+            const containScale = Math.min(LOGICAL_WIDTH / textureWidth, LOGICAL_HEIGHT / textureHeight);
             tableSurface.scale.set(containScale);
             this.staticLayer.addChild(tableSurface);
 
@@ -301,7 +295,7 @@ export class PixiRenderer {
 
         const tableShadow = new PIXI.Graphics();
         tableShadow.beginFill(0x000000, 0.24);
-        tableShadow.drawRoundedRect(-borderW / 2 - 10, -borderH / 2 - 4, borderW + 20, borderH + 18, 28);
+        tableShadow.drawRoundedRect(-LOGICAL_WIDTH / 2 - 10, -LOGICAL_HEIGHT / 2 - 4, LOGICAL_WIDTH + 20, LOGICAL_HEIGHT + 18, 28);
         tableShadow.endFill();
         tableShadow.y = 12;
         tableShadow.filters = [new PIXI.BlurFilter(10)];
@@ -309,25 +303,25 @@ export class PixiRenderer {
 
         const g = new PIXI.Graphics();
         g.beginFill(0x4a2812);
-        g.drawRoundedRect(-borderW / 2, -borderH / 2, borderW, borderH, 24);
+        g.drawRoundedRect(-LOGICAL_WIDTH / 2, -LOGICAL_HEIGHT / 2, LOGICAL_WIDTH, LOGICAL_HEIGHT, 24);
         g.endFill();
         this.staticLayer.addChild(g);
 
         const woodBevel = new PIXI.Graphics();
         woodBevel.beginFill(0x6b4220, 0.95);
-        woodBevel.drawRoundedRect(-borderW / 2 + 4, -borderH / 2 + 4, borderW - 8, borderH - 8, 22);
+        woodBevel.drawRoundedRect(-LOGICAL_WIDTH / 2 + 4, -LOGICAL_HEIGHT / 2 + 4, LOGICAL_WIDTH - 8, LOGICAL_HEIGHT - 8, 22);
         woodBevel.endFill();
         woodBevel.beginFill(0x2b1408, 0.5);
-        woodBevel.drawRoundedRect(-borderW / 2 + 10, -borderH / 2 + 10, borderW - 20, borderH - 20, 18);
+        woodBevel.drawRoundedRect(-LOGICAL_WIDTH / 2 + 10, -LOGICAL_HEIGHT / 2 + 10, LOGICAL_WIDTH - 20, LOGICAL_HEIGHT - 20, 18);
         woodBevel.endFill();
         this.staticLayer.addChild(woodBevel);
 
         const woodHighlight = new PIXI.Graphics();
         woodHighlight.beginFill(0xf0c28a, 0.11);
-        woodHighlight.drawRoundedRect(-borderW / 2 + 8, -borderH / 2 + 8, borderW - 16, 16, 10);
+        woodHighlight.drawRoundedRect(-LOGICAL_WIDTH / 2 + 8, -LOGICAL_HEIGHT / 2 + 8, LOGICAL_WIDTH - 16, 16, 10);
         woodHighlight.endFill();
         woodHighlight.beginFill(0x2a1207, 0.22);
-        woodHighlight.drawRoundedRect(-borderW / 2 + 10, borderH / 2 - 20, borderW - 20, 12, 8);
+        woodHighlight.drawRoundedRect(-LOGICAL_WIDTH / 2 + 10, LOGICAL_HEIGHT / 2 - 20, LOGICAL_WIDTH - 20, 12, 8);
         woodHighlight.endFill();
         this.staticLayer.addChild(woodHighlight);
 
@@ -380,12 +374,12 @@ export class PixiRenderer {
         const diamondDistX = TABLE_WIDTH / 4;
         const diamondDistY = TABLE_HEIGHT / 2;
         for (let i = 1; i <= 3; i++) {
-            cushions.drawCircle(-TABLE_WIDTH / 2 + i * diamondDistX, -TABLE_HEIGHT / 2 - railThickness / 2, 3);
-            cushions.drawCircle(-TABLE_WIDTH / 2 + i * diamondDistX, TABLE_HEIGHT / 2 + railThickness / 2, 3);
+            cushions.drawCircle(-TABLE_WIDTH / 2 + i * diamondDistX, -TABLE_HEIGHT / 2 - RAIL_THICKNESS / 2, 3);
+            cushions.drawCircle(-TABLE_WIDTH / 2 + i * diamondDistX, TABLE_HEIGHT / 2 + RAIL_THICKNESS / 2, 3);
         }
         for (let i = 1; i <= 1; i++) {
-            cushions.drawCircle(-TABLE_WIDTH / 2 - railThickness / 2, -TABLE_HEIGHT / 2 + i * diamondDistY, 3);
-            cushions.drawCircle(TABLE_WIDTH / 2 + railThickness / 2, -TABLE_HEIGHT / 2 + i * diamondDistY, 3);
+            cushions.drawCircle(-TABLE_WIDTH / 2 - RAIL_THICKNESS / 2, -TABLE_HEIGHT / 2 + i * diamondDistY, 3);
+            cushions.drawCircle(TABLE_WIDTH / 2 + RAIL_THICKNESS / 2, -TABLE_HEIGHT / 2 + i * diamondDistY, 3);
         }
         cushions.endFill();
         this.staticLayer.addChild(cushions);

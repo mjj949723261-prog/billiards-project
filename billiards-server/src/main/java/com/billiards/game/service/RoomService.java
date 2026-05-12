@@ -39,7 +39,7 @@ public class RoomService {
     private static final int TABLE_WIDTH = 820;
     private static final int TABLE_HEIGHT = 410;
     private static final int BALL_RADIUS = 14;
-    private static final int PLAYABLE_AREA_INSET = BALL_RADIUS + 24;
+    private static final int PLAYABLE_AREA_INSET = BALL_RADIUS;
     private static final int HEAD_STRING_X = -TABLE_WIDTH / 4;
     private static final int BALL_STATE_PRECISION = 100;
     private static final String SHOT_FINALIZE_TIMER_SUFFIX = ":shot-finalize";

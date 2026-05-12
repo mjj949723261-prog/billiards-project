@@ -20,7 +20,7 @@ import {
   TURN_TIME_LIMIT,
   VELOCITY_THRESHOLD,
   WALL_BOUNCE,
-} from '../constants.js?v=20260429-room-entry-fix'
+} from '../constants.js?v=20260512_table_surface_restore'
 import { Vec2 } from '../math.js'
 import { evaluateShot } from './rules.js'
 import { isBallCapturedByPocket } from './pocket-geometry.js'

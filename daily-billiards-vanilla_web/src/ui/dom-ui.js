@@ -5,7 +5,7 @@
  */
 
 import { GameClient } from '../network/game-client.js?v=20260509_room_join_snapshot_fix'
-import { MAX_PULL_DISTANCE } from '../constants.js?v=20260429-room-entry-fix'
+import { MAX_PULL_DISTANCE } from '../constants.js?v=20260512_table_surface_restore'
 
 /**
  * 获取玩家的显示名称（包含“我”的标注）

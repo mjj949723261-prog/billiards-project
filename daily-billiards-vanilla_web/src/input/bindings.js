@@ -8,7 +8,7 @@ import {
   BALL_RADIUS,
   HEAD_STRING_X,
   MAX_PULL_DISTANCE,
-} from '../constants.js?v=20260429-room-entry-fix'
+} from '../constants.js?v=20260512_table_surface_restore'
 import { Vec2 } from '../math.js'
 import { GameClient } from '../network/game-client.js?v=20260509_room_join_snapshot_fix'
 import { hasDebugAlwaysDrag, isPortraitHeldLandscapeSemanticMobile } from '../layout/mode.js'

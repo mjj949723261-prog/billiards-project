@@ -8,7 +8,7 @@ import {
   POCKET_RADIUS,
   TABLE_HEIGHT,
   TABLE_WIDTH,
-} from '../constants.js?v=20260429-room-entry-fix'
+} from '../constants.js?v=20260512_table_surface_restore'
 import { Vec2 } from '../math.js'
 
 const CORNER_POCKET_MOUTH_DEPTH = BALL_RADIUS * 0.18

@@ -4,7 +4,7 @@
  * 以及球体颜色和类型属性。
  */
 
-import { BALL_RADIUS, FRICTION, VELOCITY_THRESHOLD } from '../constants.js?v=20260429-room-entry-fix';
+import { BALL_RADIUS, FRICTION, VELOCITY_THRESHOLD } from '../constants.js?v=20260512_table_surface_restore';
 import { Vec2 } from '../math.js';
 
 /**

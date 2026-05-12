@@ -1,6 +1,8 @@
 import {
   BALL_RADIUS,
   HEAD_STRING_X,
+  LOGICAL_HEIGHT,
+  LOGICAL_WIDTH,
   MAX_PULL_DISTANCE,
   PLAYABLE_AREA_INSET_BOTTOM,
   PLAYABLE_AREA_INSET_LEFT,
@@ -11,7 +13,7 @@ import {
   RELEASE_FLASH_DURATION,
   TABLE_HEIGHT,
   TABLE_WIDTH,
-} from '../constants.js?v=20260429-room-entry-fix'
+} from '../constants.js?v=20260512_table_surface_restore'
 import { hasDebugAlwaysDrag, hasDebugOverlay, isPortraitLayout, shouldRotateGameplayStage } from '../layout/mode.js'
 import { Vec2 } from '../math.js'
 import { GameClient } from '../network/game-client.js?v=20260509_room_join_snapshot_fix'
@@ -26,8 +28,8 @@ if (tableSurfaceImage) {
 export function resolveTableSurfaceSourceRect(
   imageWidth,
   imageHeight,
-  targetWidth = TABLE_WIDTH + RAIL_THICKNESS * 2,
-  targetHeight = TABLE_HEIGHT + RAIL_THICKNESS * 2,
+  targetWidth = LOGICAL_WIDTH,
+  targetHeight = LOGICAL_HEIGHT,
 ) {
   // 当前台面图就是按整张等比使用的，所以这里先返回 full image；
   // 单独保留这个入口，是为了以后如果要裁切不同皮肤资源，不用改调用侧。
@@ -105,8 +107,8 @@ export function drawGame(game) {
     const sourceRect = resolveTableSurfaceSourceRect(
       tableSurfaceImage.naturalWidth,
       tableSurfaceImage.naturalHeight,
-      TABLE_WIDTH + RAIL_THICKNESS * 2,
-      TABLE_HEIGHT + RAIL_THICKNESS * 2,
+      LOGICAL_WIDTH,
+      LOGICAL_HEIGHT,
     )
     ctx.shadowColor = 'rgba(0, 0, 0, 0.24)'
     ctx.shadowBlur = 12
@@ -118,10 +120,10 @@ export function drawGame(game) {
       sourceRect.y,
       sourceRect.width,
       sourceRect.height,
-      -TABLE_WIDTH / 2 - RAIL_THICKNESS,
-      -TABLE_HEIGHT / 2 - RAIL_THICKNESS,
-      TABLE_WIDTH + RAIL_THICKNESS * 2,
-      TABLE_HEIGHT + RAIL_THICKNESS * 2,
+      -LOGICAL_WIDTH / 2,
+      -LOGICAL_HEIGHT / 2,
+      LOGICAL_WIDTH,
+      LOGICAL_HEIGHT,
     )
     ctx.shadowColor = 'transparent'
     ctx.shadowBlur = 0
@@ -140,7 +142,7 @@ export function drawGame(game) {
   woodOuterGrad.addColorStop(0.45, '#6b4220')
   woodOuterGrad.addColorStop(1, '#2b1408')
   ctx.fillStyle = woodOuterGrad
-  ctx.fillRect(-TABLE_WIDTH / 2 - RAIL_THICKNESS, -TABLE_HEIGHT / 2 - RAIL_THICKNESS, TABLE_WIDTH + RAIL_THICKNESS * 2, TABLE_HEIGHT + RAIL_THICKNESS * 2)
+  ctx.fillRect(-LOGICAL_WIDTH / 2, -LOGICAL_HEIGHT / 2, LOGICAL_WIDTH, LOGICAL_HEIGHT)
   
   ctx.shadowColor = 'transparent'
   ctx.shadowBlur = 0
@@ -148,9 +150,9 @@ export function drawGame(game) {
   ctx.shadowOffsetY = 0
 
   ctx.fillStyle = 'rgba(240, 194, 138, 0.12)'
-  ctx.fillRect(-TABLE_WIDTH / 2 - RAIL_THICKNESS + 8, -TABLE_HEIGHT / 2 - RAIL_THICKNESS + 8, TABLE_WIDTH + RAIL_THICKNESS * 2 - 16, 12)
+  ctx.fillRect(-LOGICAL_WIDTH / 2 + 8, -LOGICAL_HEIGHT / 2 + 8, LOGICAL_WIDTH - 16, 12)
   ctx.fillStyle = 'rgba(18, 8, 2, 0.22)'
-  ctx.fillRect(-TABLE_WIDTH / 2 - RAIL_THICKNESS + 10, TABLE_HEIGHT / 2 + RAIL_THICKNESS - 18, TABLE_WIDTH + RAIL_THICKNESS * 2 - 20, 10)
+  ctx.fillRect(-LOGICAL_WIDTH / 2 + 10, LOGICAL_HEIGHT / 2 - 18, LOGICAL_WIDTH - 20, 10)
 
   // Cloth (green) with radial gradient
   const clothGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, TABLE_WIDTH)
@@ -432,7 +434,7 @@ function drawAimAndCue(game, ctx) {
 function drawPowerBar(game, ctx, powerRatio) {
     const barWidth = 12
     const barHeight = 120
-    const x = TABLE_WIDTH / 2 + RAIL_THICKNESS + 25
+    const x = LOGICAL_WIDTH / 2 + 25
     const y = -barHeight / 2
     
     ctx.save()
