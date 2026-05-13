@@ -551,13 +551,28 @@ export function bindGameInput(game) {
     if (game.awaitingSettledSync && !debugAlwaysDrag) return;
 
     game.updatePos(e.touches ? e.touches[0] : e, game.ballInHand && game.placingCue ? 'placement' : 'aim')
-    
+
     // 如果正在摆放白球
     if (game.ballInHand && game.placingCue) {
       game.tryPlaceCueBall()
       syncCuePlacement(game)
       e.preventDefault()
       return
+    }
+
+    // 手指在台面上移动时，球杆跟随手势方向转动
+    if (!game.ballInHand && !game.isMoving() && !game.isGameOver) {
+      const aimVector = game.mousePos.clone().sub(game.cueBall.pos)
+      if (aimVector.length() > 8) {
+        const newAngle = Math.atan2(aimVector.y, aimVector.x)
+        if (Math.abs(newAngle - game.aimAngle) > 0.005) {
+          game.showRemoteCue = false
+          game.aimAngle = newAngle
+          if (!debugAlwaysDrag && (++game.aimSyncCounter % 3 === 0)) {
+            GameClient.sendAim({ aimAngle: game.aimAngle, pullDistance: game.pullDistance })
+          }
+        }
+      }
     }
 
     if (!debugAlwaysDrag) return
