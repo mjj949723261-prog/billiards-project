@@ -151,7 +151,11 @@ export class PixiRenderer {
         textures.tableSurface = PIXI.Texture.from('./assets/table-surface.png');
         // 台面主图是异步资源，到图之前先走程序化台面兜底，加载完成后再重绘静态层切换过去。
         if (!textures.tableSurface.baseTexture.valid) {
-            textures.tableSurface.baseTexture.once('loaded', () => this.drawStaticTable());
+            textures.tableSurface.baseTexture.once('loaded', () => {
+                this.staticTableDrawn = false;
+                this.drawStaticTable();
+                this.staticTableDrawn = true;
+            });
         }
 
         const clothCanvas = document.createElement('canvas');
@@ -199,12 +203,16 @@ export class PixiRenderer {
 
     resize(availableWidth, availableHeight, dpr, fittedScale, isPortrait) {
         this.app.renderer.resize(availableWidth, availableHeight);
-        
+
         this.mainContainer.x = availableWidth / 2;
         this.mainContainer.y = availableHeight / 2;
         this.mainContainer.scale.set(fittedScale);
-        this.drawStaticTable();
-        
+
+        if (!this.staticTableDrawn) {
+            this.drawStaticTable();
+            this.staticTableDrawn = true;
+        }
+
         if (isPortrait) {
             this.mainContainer.rotation = Math.PI / 2;
         } else {
@@ -633,8 +641,8 @@ export class PixiRenderer {
         }
 
         this.drawCueStick(game, ang, powerRatio);
-        
-        if (isMyTurn && (game.isDragging || game.showRemoteCue)) {
+
+        if (isMyTurn && game.isDragging) {
             this.drawPowerBar(game, powerRatio);
         } else {
             if (this.powerLabel) this.powerLabel.visible = false;

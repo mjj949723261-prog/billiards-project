@@ -212,7 +212,7 @@ export class BilliardsGame {
       : null
     const uiPaddingX = isSemanticMobileGameplay
       ? semanticGameplayInset
-      : (isPortrait ? 20 : 220)
+      : (isPortrait ? 20 : Math.min(220, availableWidth * 0.18))
     const uiPaddingY = isSemanticMobileGameplay
       ? semanticGameplayInset
       : (isPortrait ? 180 : 20)

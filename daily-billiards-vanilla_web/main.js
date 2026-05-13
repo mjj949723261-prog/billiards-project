@@ -765,12 +765,13 @@ if (devView === 'play') {
 
 window.addEventListener('online', () => {
     updateGameplayRoomChrome();
-    // 网络恢复时，如果有保存的连接参数且当前未连接，尝试重连
     if (GameClient.lastConnectionParams && GameClient.connectionState === 'idle') {
         console.log('[Network] Network restored, attempting reconnect...');
-        const { nickname, onConnected, requestedRoomId } = GameClient.lastConnectionParams;
-        GameClient.reconnectAttempts = 0;  // 重置重连计数
-        GameClient.connect(nickname, onConnected, requestedRoomId);
+        const { nickname, requestedRoomId } = GameClient.lastConnectionParams;
+        GameClient.reconnectAttempts = 0;
+        GameClient.connect(nickname, () => {
+            updateGameplayRoomChrome();
+        }, requestedRoomId);
     }
 });
 
@@ -788,7 +789,7 @@ document.addEventListener('touchstart', (e) => {
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
     touchStartTarget = e.target;
-}, { passive: false });
+}, { passive: true });
 
 document.addEventListener('touchmove', (e) => {
     // 检查是否在游戏控制区域内（力度条、滚轮、画布）
@@ -838,25 +839,6 @@ const preventTextSelection = (e) => {
 
 // 监听选择变化事件
 document.addEventListener('selectionchange', preventTextSelection, { passive: true });
-
-// 定期清理选择（针对某些 iOS 版本的额外保护），进入游戏后启动，离开时清理
-let selectionCleanupInterval = null;
-
-window.startSelectionCleanup = () => {
-    if (!selectionCleanupInterval) {
-        selectionCleanupInterval = setInterval(preventTextSelection, 300);
-    }
-};
-
-window.stopSelectionCleanup = () => {
-    if (selectionCleanupInterval) {
-        clearInterval(selectionCleanupInterval);
-        selectionCleanupInterval = null;
-    }
-};
-
-// 默认启动
-window.startSelectionCleanup();
 
 if (!roomFromUrl && roomEntry.suggestedRoomId) {
     document.getElementById('room-id-input').value = roomEntry.suggestedRoomId;
