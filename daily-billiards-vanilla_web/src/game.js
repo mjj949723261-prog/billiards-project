@@ -723,7 +723,16 @@ export class BilliardsGame {
    * 重置用于在击球后评估规则的临时击球状态。
    */
   resetShotState() {
-    this.shotState = { firstContact: null, pocketedBalls: [], cuePocketed: false, eightPocketed: false, railContacts: 0, playerGroupBefore: this.playerGroups[this.currentPlayer], remainingGroupBefore: this.getRemainingBallsForPlayer(this.currentPlayer) };
+    this.shotState = {
+      firstContact: null,
+      pocketedBalls: [],
+      cuePocketed: false,
+      eightPocketed: false,
+      railContacts: 0,
+      railContactsAfterHit: 0,
+      playerGroupBefore: this.playerGroups[this.currentPlayer],
+      remainingGroupBefore: this.getRemainingBallsForPlayer(this.currentPlayer),
+    };
   }
 
   /**

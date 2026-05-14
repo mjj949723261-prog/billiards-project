@@ -331,7 +331,10 @@ function handleRailCollisions(game, activeBalls) {
           pos.x = leftLimit
           vel.x *= -WALL_BOUNCE
           vel.y *= RAIL_FRICTION // 加入切向摩擦
-          if (game.shotActive) game.shotState.railContacts++
+          if (game.shotActive) {
+            game.shotState.railContacts++
+            if (game.shotState.firstContact) game.shotState.railContactsAfterHit++
+          }
           game.audio.playRailHit(Math.min(1, impact / 18))
           if (impact > 2) game.collisionEffects.push({ pos: new Vec2(-TABLE_WIDTH/2, pos.y), age: 0, type: 'rail' })
       }
@@ -343,7 +346,10 @@ function handleRailCollisions(game, activeBalls) {
           pos.x = rightLimit
           vel.x *= -WALL_BOUNCE
           vel.y *= RAIL_FRICTION // 加入切向摩擦
-          if (game.shotActive) game.shotState.railContacts++
+          if (game.shotActive) {
+            game.shotState.railContacts++
+            if (game.shotState.firstContact) game.shotState.railContactsAfterHit++
+          }
           game.audio.playRailHit(Math.min(1, impact / 18))
           if (impact > 2) game.collisionEffects.push({ pos: new Vec2(TABLE_WIDTH/2, pos.y), age: 0, type: 'rail' })
       }
@@ -357,7 +363,10 @@ function handleRailCollisions(game, activeBalls) {
       pos.y = topLimit
           vel.y *= -WALL_BOUNCE
           vel.x *= RAIL_FRICTION // 加入切向摩擦
-          if (game.shotActive) game.shotState.railContacts++
+          if (game.shotActive) {
+            game.shotState.railContacts++
+            if (game.shotState.firstContact) game.shotState.railContactsAfterHit++
+          }
           game.audio.playRailHit(Math.min(1, impact / 18))
           if (impact > 2) game.collisionEffects.push({ pos: new Vec2(pos.x, -TABLE_HEIGHT/2), age: 0, type: 'rail' })
       }
@@ -369,7 +378,10 @@ function handleRailCollisions(game, activeBalls) {
       pos.y = bottomLimit
           vel.y *= -WALL_BOUNCE
           vel.x *= RAIL_FRICTION // 加入切向摩擦
-          if (game.shotActive) game.shotState.railContacts++
+          if (game.shotActive) {
+            game.shotState.railContacts++
+            if (game.shotState.firstContact) game.shotState.railContactsAfterHit++
+          }
           game.audio.playRailHit(Math.min(1, impact / 18))
           if (impact > 2) game.collisionEffects.push({ pos: new Vec2(pos.x, TABLE_HEIGHT/2), age: 0, type: 'rail' })
       }

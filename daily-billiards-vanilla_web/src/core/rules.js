@@ -1,6 +1,6 @@
 /**
  * @file rules.js
- * @description 实现标准的 8 号球台球规则。
+ * @description 实现中式八球规则。
  * 包括回合切换、自由球（白球在手）规则、球组分配以及击球合法性评估。
  */
 
@@ -8,8 +8,6 @@ import { TURN_TIME_LIMIT } from '../constants.js?v=20260512_table_surface_restor
 
 /**
  * 在产生第一个合法进球后，为玩家分配球组（全色或花色）。
- * @param {BilliardsGame} game - 游戏实例。
- * @param {string} group - 要分配给当前玩家的球组类型（'solid' 全色 或 'stripe' 花色）。
  */
 export function applyGroups(game, group) {
   if (!group) return
@@ -20,9 +18,6 @@ export function applyGroups(game, group) {
 
 /**
  * 将当前回合切换给另一名玩家。
- * @param {BilliardsGame} game - 游戏实例。
- * @param {boolean} [withBallInHand=false] - 下一名玩家是否获得“白球在手”（自由球）机会。
- * @param {string} [ballInHandZone='table'] - 允许放置白球的区域（'table' 全场 或 'kitchen' 开球区/开球线后）。
  */
 export function switchTurn(game, withBallInHand = false, ballInHandZone = 'table') {
   game.currentPlayer = game.currentPlayer === 1 ? 2 : 1
@@ -36,11 +31,9 @@ export function switchTurn(game, withBallInHand = false, ballInHandZone = 'table
   game.isBreakShot = false
   if (withBallInHand) {
     game.ensureCueBallVisibleForBallInHand?.(true)
-    
-    // 加强自由球提示
     const isMyTurn = (game.currentPlayer === game.playerIndex);
     if (isMyTurn) {
-        game.setStatusMessage('自由球：请拖动母球放置', 3500)
+      game.setStatusMessage('自由球：请拖动母球放置', 3500)
     }
   }
   game.resetShotState()
@@ -48,16 +41,11 @@ export function switchTurn(game, withBallInHand = false, ballInHandZone = 'table
 }
 
 /**
- * 在所有球停止移动后，评估击球结果。
- * 检查是否犯规、是否有进球，并决定是否需要切换回合。
- * 
- * @param {BilliardsGame} game - 游戏实例。
+ * 在所有球停止移动后，评估击球结果（中式八球规则）。
  */
 export function evaluateShot(game) {
   if (!game.shotActive || game.isGameOver) return
 
-  // Freeze the rule inputs up front because foul resolution can switch turns
-  // or mutate groups while we are still deciding the outcome of this shot.
   const currentPlayer = game.currentPlayer
   const currentGroup = game.shotState.playerGroupBefore
   const legalFirstTarget = game.getLegalFirstTargetType()
@@ -65,7 +53,65 @@ export function evaluateShot(game) {
   const coloredPocketed = game.shotState.pocketedBalls.filter(ball => ball.type === 'solid' || ball.type === 'stripe')
   let foulMessage = ''
 
-  // 检查黑八入袋情况
+  // === 开球阶段特殊处理 ===
+  if (game.isBreakShot) {
+    // 开球打进8号球：不判负，重新开球
+    if (game.shotState.eightPocketed) {
+      game.setStatusMessage('开球打进黑八，重新开球', 2200)
+      game.shotActive = false
+      game.init()
+      return
+    }
+
+    // 开球白球落袋：犯规，对手获得开球线后自由球
+    if (game.shotState.cuePocketed) {
+      game.setStatusMessage('开球犯规：白球落袋', 2200)
+      game.audio.playFoul()
+      game.shotActive = false
+      switchTurn(game, true, 'kitchen')
+      return
+    }
+
+    // 非法开球检查：至少4颗球碰库或有球入袋
+    const legalBreak = coloredPocketed.length > 0 || game.shotState.railContacts >= 4
+    if (!legalBreak) {
+      game.setStatusMessage('非法开球（需进球或至少4颗球碰库）', 2200)
+      game.audio.playFoul()
+      game.shotActive = false
+      switchTurn(game, true, 'kitchen')
+      return
+    }
+
+    // 合法开球且有进球，分配球组
+    if (!currentGroup && coloredPocketed.length > 0) {
+      applyGroups(game, coloredPocketed[0].type)
+    }
+
+    // 合法开球有进球则继续，否则换人
+    game.shotActive = false
+    const resolvedGroup = game.playerGroups[currentPlayer]
+    const ownPocketed = resolvedGroup
+      ? game.shotState.pocketedBalls.filter(ball => ball.type === resolvedGroup).length
+      : coloredPocketed.length
+
+    if (ownPocketed > 0) {
+      game.setStatusMessage(`玩家${currentPlayer}继续击球`, 1400)
+      game.timeLeft = TURN_TIME_LIMIT
+      game.lastTick = Date.now()
+      game.isBreakShot = false
+      game.resetShotState()
+      game.updateUI()
+      return
+    }
+
+    game.setStatusMessage(`轮到玩家${currentPlayer === 1 ? 2 : 1}`, 1600)
+    switchTurn(game, false)
+    return
+  }
+
+  // === 非开球阶段 ===
+
+  // 黑八入袋判定
   if (game.shotState.eightPocketed) {
     const clearedGroup = currentGroup && game.shotState.remainingGroupBefore === 0
     if (game.shotState.cuePocketed || !clearedGroup) {
@@ -80,16 +126,8 @@ export function evaluateShot(game) {
     return
   }
 
-  // 检查开球合法性
-  if (game.isBreakShot) {
-    const legalBreak = game.shotState.cuePocketed || coloredPocketed.length > 0 || game.shotState.railContacts >= 4
-    if (!legalBreak) {
-      foulMessage = '非法开球（需进球或至少4颗球碰库）'
-    }
-  }
-
-  // 检查常规犯规
-  if (!foulMessage && game.shotState.cuePocketed) {
+  // 犯规检查
+  if (game.shotState.cuePocketed) {
     foulMessage = '犯规：白球落袋'
   } else if (!firstContact) {
     foulMessage = '犯规：未碰到任何球'
@@ -97,10 +135,12 @@ export function evaluateShot(game) {
     foulMessage = legalFirstTarget === 'eight' ? '犯规：必须先碰黑八' : '犯规：未先碰到目标球'
   } else if (!currentGroup && firstContact.type === 'eight') {
     foulMessage = '犯规：开放球局不能先碰黑八'
+  } else if (firstContact && coloredPocketed.length === 0 && game.shotState.railContactsAfterHit === 0) {
+    // 中式八球规则：碰到目标球后，必须有至少一颗球碰库或有球入袋
+    foulMessage = '犯规：碰球后无球碰库或入袋'
   }
 
-  // 开放球局只在 first legal colored pocket resolves; after that both clients
-  // and the server should treat the table as no longer "open".
+  // 开放球局分配球组
   if (!foulMessage && !currentGroup && coloredPocketed.length > 0) {
     applyGroups(game, coloredPocketed[0].type)
   }
@@ -110,7 +150,7 @@ export function evaluateShot(game) {
     game.setStatusMessage(foulMessage, 2200)
     game.audio.playFoul()
     game.shotActive = false
-    switchTurn(game, true, game.isBreakShot ? 'kitchen' : 'table')
+    switchTurn(game, true, 'table')
     return
   }
 
